@@ -1,0 +1,17 @@
+name: 'pr-publishing'
+description: 'An action for publishing PRs'
+
+inputs:
+  artifacts-base-path:
+    required: true
+    description: 'Base paths for artifacts'
+  self-name:
+    description: 'The name of the self-user'
+    default: 'github-actions[bot]'
+  base-maven-url:
+    description: 'The base public PR maven URL'
+    default: 'https://prmaven.neoforged.net'
+
+runs:
+  using: node20
+  main: dist/index.js

@@ -1,0 +1,12 @@
+allprojects { Project p ->
+    afterEvaluate { Project proj ->
+        if (proj.plugins.hasPlugin('maven-publish')) {
+            (project.extensions.getByType(PublishingExtension) as PublishingExtension).repositories {
+                maven {
+                    name '_githubPackages_PRs'
+                    url project.rootProject.file('_packages_prs')
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,32 @@
+name: 'pr-publishing'
+description: 'Upload PR contents'
+
+inputs:
+  root-dir:
+    description: 'The root directory of the Gradle project'
+    default: '.'
+  publishing-task:
+    description: 'The task to run to publish'
+    default: 'publishAllPublicationsTo_githubPackages_PRsRepository'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Compute init script path
+      id: initscriptpath
+      shell: bash
+      run: |
+        echo "path=$(echo $GITHUB_ACTION_PATH)/init.gradle" >> $GITHUB_OUTPUT
+        echo "event_path=$(echo $GITHUB_EVENT_PATH)" >> $GITHUB_OUTPUT
+    - uses: gradle/gradle-build-action@v2
+      name: Publish with Gradle to directory
+      with:
+        arguments: ${{ inputs.publishing-task }} --init-script ${{ steps.initscriptpath.outputs.path }}
+    - name: Add event json
+      shell: bash
+      run: cp ${{ steps.initscriptpath.outputs.event_path }} ${{ inputs.root-dir }}/_packages_prs/event.json
+    - uses: actions/upload-artifact@v3
+      name: Upload maven directory
+      with:
+        name: maven-publish
+        path: ${{ inputs.root-dir }}/_packages_prs
