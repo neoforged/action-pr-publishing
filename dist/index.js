@@ -50328,6 +50328,8 @@ const jszip_1 = __importDefault(__nccwpck_require__(3592));
 const process = __importStar(__nccwpck_require__(7282));
 const core_1 = __nccwpck_require__(2186);
 const fast_xml_parser_1 = __nccwpck_require__(2603);
+// 50mb
+const artifactLimit = 50 * 1000000;
 async function run() {
     try {
         const token = process.env['GITHUB_TOKEN'];
@@ -50345,6 +50347,10 @@ async function run() {
             run_id: workflow_run.id
         })
             .then(art => art.data.artifacts.find(ar => ar.name == 'maven-publish'));
+        if (artifact.size_in_bytes > artifactLimit) {
+            core.setFailed(`Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`);
+            return;
+        }
         console.log(`Found artifact: ${artifact.archive_download_url}`);
         const response = await axios_1.default.get(artifact.archive_download_url, {
             responseType: 'arraybuffer',

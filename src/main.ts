@@ -7,6 +7,9 @@ import * as process from 'process'
 import { getInput } from '@actions/core'
 import { XMLParser } from 'fast-xml-parser'
 
+// 50mb
+const artifactLimit = 50 * 1000000
+
 export async function run(): Promise<void> {
   try {
     const token = process.env['GITHUB_TOKEN']!
@@ -28,6 +31,12 @@ export async function run(): Promise<void> {
         run_id: workflow_run.id
       })
       .then(art => art.data.artifacts.find(ar => ar.name == 'maven-publish'))
+    if (artifact!.size_in_bytes > artifactLimit) {
+      core.setFailed(
+        `Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`
+      )
+      return
+    }
 
     console.log(`Found artifact: ${artifact!.archive_download_url}`)
 
