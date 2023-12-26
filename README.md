@@ -38,4 +38,4 @@ If such branch is not found, the action will use the `main` branch as the base.
 Replacements:
 1. A line starting with _exactly_ `neo_version=` in the `gradle.properties` file will be updated with the published artifact version;
 2. A line starting with _exactly_ `minecraft_version=` in the `gradle.properties` file will be updated with the correct Minecraft version (relevant if the base branch is `main`);
-3. The PR repository declaration block will be appended *to the end* of the `build.gradle` file.
+3. The PR repository declaration block will be added before a `dependencies {` line.

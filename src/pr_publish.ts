@@ -343,10 +343,13 @@ async function generateMDK(
 
   zip.file('gradle.properties', gradleProperties.join('\n'))
 
-  let buildGradle = await zip.file('build.gradle')!.async('string')
-  buildGradle += `\n// PR repository \n${repoBlock}`
-
-  zip.file('build.gradle', buildGradle)
+  const buildGradle = (await zip.file('build.gradle')!.async('string')).split(
+    new RegExp('\r\n|\n')
+  )
+  buildGradle[
+    buildGradle.indexOf('dependencies {')
+  ] = `// PR repository \n${repoBlock}\ndependencies {`
+  zip.file('build.gradle', buildGradle.join('\n'))
 
   const path = `${artifact.group}/${artifact.name}/${artifact.version}/mdk-pr${prNumber}.zip`
   await uploader(
