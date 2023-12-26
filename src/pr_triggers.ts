@@ -1,0 +1,108 @@
+import { getOcto, isAuthorMaintainer } from './utils'
+import { context } from '@actions/github'
+import { getInput } from '@actions/core'
+import { runPR, shouldPublishCheckBox } from './pr_publish'
+import { GitHub } from '@actions/github/lib/utils'
+import { PullRequest, WorkflowRun } from './types'
+
+export async function runFromTrigger() {
+  console.log(
+    `Triggered by event '${context.eventName}', action '${context.payload.action}'`
+  )
+  const octo = getOcto()
+  if (
+    context.eventName == 'pull_request_target' &&
+    context.payload.action == 'opened'
+  ) {
+    await octo.rest.issues.createComment({
+      ...context.repo,
+      issue_number: context.payload.pull_request!.number,
+      body: `- [${
+        (await isAuthorMaintainer(
+          octo,
+          context.payload.pull_request! as PullRequest
+        ))
+          ? 'X'
+          : ' '
+      }] ${shouldPublishCheckBox}`
+    })
+  } else if (
+    context.eventName == 'issue_comment' &&
+    context.payload.action == 'edited'
+  ) {
+    const self = getInput('self-name')
+    if (
+      context.payload.comment!.user.login != self ||
+      context.payload.sender!.login == self
+    )
+      return
+
+    if (context.payload.issue!.pull_request == false) {
+      console.log(`Not a PR, aborting`)
+      return
+    }
+
+    const pr: PullRequest = await octo.rest.pulls
+      .get({
+        ...context.repo,
+        pull_number: context.payload.issue!.number
+      })
+      .then(d => d.data)
+    const prWorkflows = await getRunsOfPR(octo, pr.head.sha)
+    const runName = getInput('uploader-workflow-name')
+    const run = prWorkflows.find(flow => flow.name == runName)
+    if (!run) {
+      console.log(`No run with name ${runName} found on PR #${pr.number}`)
+      return
+    }
+
+    if (run.status == 'in_progress') {
+      console.log(`Workflow run (${run.html_url}) in progress, aborting`)
+      return
+    }
+
+    await runPR(octo, pr, pr.head.sha, run.id)
+  }
+}
+
+export async function getRunsOfPR(
+  octo: InstanceType<typeof GitHub>,
+  sha: string
+): Promise<WorkflowRun[]> {
+  // Obtain the check runs for the head SHA1 of this pull request.
+  const check_runs = (
+    await octo.rest.checks.listForRef({
+      ...context.repo,
+      ref: sha
+    })
+  ).data.check_runs
+
+  const res: WorkflowRun[] = []
+  // For every relevant run:
+  for (const run of check_runs) {
+    if (run.app!.slug == 'github-actions') {
+      // Get the corresponding Actions job.
+      // The Actions job ID is the same as the Checks run ID
+      // (not to be confused with the Actions run ID).
+      const job = (
+        await octo.rest.actions.getJobForWorkflowRun({
+          ...context.repo,
+          job_id: run.id
+        })
+      ).data
+
+      // Now, get the Actions run that this job is in.
+      const actions_run = (
+        await octo.rest.actions.getWorkflowRun({
+          ...context.repo,
+          run_id: job.run_id
+        })
+      ).data
+
+      if (actions_run.event == 'pull_request') {
+        res.push(actions_run)
+      }
+    }
+  }
+  return res
+}

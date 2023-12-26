@@ -50289,6 +50289,29 @@ function wrappy (fn, cb) {
 /***/ }),
 
 /***/ 399:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.run = void 0;
+const github_1 = __nccwpck_require__(5438);
+const pr_publish_1 = __nccwpck_require__(5926);
+const pr_triggers_1 = __nccwpck_require__(1390);
+async function run() {
+    if (github_1.context.eventName == 'workflow_run') {
+        await (0, pr_publish_1.runFromWorkflow)();
+    }
+    else {
+        await (0, pr_triggers_1.runFromTrigger)();
+    }
+}
+exports.run = run;
+
+
+/***/ }),
+
+/***/ 5926:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -50320,7 +50343,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runPR = exports.run = void 0;
+exports.runPR = exports.runFromWorkflow = exports.shouldPublishCheckBox = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const github_1 = __nccwpck_require__(5438);
 const axios_1 = __importDefault(__nccwpck_require__(8757));
@@ -50328,36 +50351,67 @@ const jszip_1 = __importDefault(__nccwpck_require__(3592));
 const process = __importStar(__nccwpck_require__(7282));
 const core_1 = __nccwpck_require__(2186);
 const fast_xml_parser_1 = __nccwpck_require__(2603);
+const utils_1 = __nccwpck_require__(1314);
 // 50mb
 const artifactLimit = 50 * 1000000;
-async function run() {
-    const token = process.env['GITHUB_TOKEN'];
-    const octo = (0, github_1.getOctokit)(token);
+exports.shouldPublishCheckBox = 'Publish PR to GitHub Packages';
+async function runFromWorkflow() {
+    const octo = (0, utils_1.getOcto)();
     const workflow_run = github_1.context.payload.workflow_run;
     // Step 1
     if (workflow_run.conclusion != 'success') {
         console.log('Aborting, workflow run was not successful');
         return;
     }
-    if (workflow_run.pull_requests.length < 1) {
+    if (!workflow_run.head_branch) {
+        console.log(`Unknown head branch...`);
+        return;
+    }
+    console.log(`Workflow run head branch: ${workflow_run.head_branch} and repository owner: ${workflow_run.head_repository.owner.login}`);
+    const possiblePrs = await octo.rest.pulls
+        .list({
+        ...github_1.context.repo,
+        head: workflow_run.head_repository.owner.login +
+            ':' +
+            workflow_run.head_branch,
+        state: 'open',
+        sort: 'long-running'
+    })
+        .then(d => d.data);
+    if (possiblePrs.length < 1) {
         console.log(`No open PR associated...`);
         return;
     }
-    const pr = workflow_run.pull_requests[0];
-    await runPR(octo, pr.number, workflow_run.head_sha, workflow_run);
+    const pr = possiblePrs[0];
+    await runPR(octo, await octo.rest.pulls
+        .get({
+        ...github_1.context.repo,
+        pull_number: pr.number
+    })
+        .then(d => d.data), workflow_run.head_sha, workflow_run.id);
 }
-exports.run = run;
-async function runPR(octo, prNumber, headSha, workflow_run) {
+exports.runFromWorkflow = runFromWorkflow;
+async function runPR(octo, pr, headSha, runId) {
     try {
+        const prNumber = pr.number;
         console.log(`PR number: ${prNumber}`);
         const token = process.env['GITHUB_TOKEN'];
+        const selfComment = await getSelfComment(octo, prNumber);
+        if (!(await shouldPublish(octo, pr, selfComment))) {
+            console.log(`PR is not published as checkbox is not ticked`);
+            return;
+        }
         // Step 2
         const artifact = await octo.rest.actions
             .listWorkflowRunArtifacts({
             ...github_1.context.repo,
-            run_id: workflow_run.id
+            run_id: runId
         })
             .then(art => art.data.artifacts.find(ar => ar.name == 'maven-publish'));
+        if (!artifact) {
+            console.log(`Found no artifact to publish from run #${runId}`);
+            return;
+        }
         if (artifact.size_in_bytes > artifactLimit) {
             core.setFailed(`Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`);
             return;
@@ -50407,28 +50461,14 @@ async function runPR(octo, prNumber, headSha, workflow_run) {
         console.log();
         console.log(`Published artifacts:`);
         artifacts.forEach(art => console.log(`\t${art.group}:${art.name}:${art.version}`));
-        if (prNumber == 0)
-            return;
-        const pr = await octo.rest.pulls.get({
+        // Delete the artifact so that we don't try to re-publish in the future
+        await octo.rest.actions.deleteArtifact({
             ...github_1.context.repo,
-            pull_number: prNumber
+            artifact_id: artifact.id
         });
-        if (pr.data.state != 'open')
+        if (pr.state != 'open')
             return;
         let { comment, repoBlock } = await generateComment(octo, prNumber, artifacts);
-        const self = (0, core_1.getInput)('self-name');
-        let selfCommentId = null;
-        outer: for await (const comments of octo.paginate.iterator(octo.rest.issues.listComments, {
-            ...github_1.context.repo,
-            issue_number: prNumber
-        })) {
-            for (const comment of comments.data) {
-                if (comment.user.login == self) {
-                    selfCommentId = comment.id;
-                    break outer;
-                }
-            }
-        }
         // Step 4
         if (github_1.context.repo.repo.toLowerCase() == 'neoforge') {
             const neoArtifact = artifacts.find(art => art.group == 'net.neoforged' && art.name == 'neoforge');
@@ -50438,6 +50478,9 @@ async function runPR(octo, prNumber, headSha, workflow_run) {
         }
         const oldComment = comment;
         comment = `
+- [x] ${exports.shouldPublishCheckBox}
+Last commit published: [${headSha}](https://github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/commit/${headSha}).
+
 <details>
 
 <summary>PR Publishing</summary>
@@ -50446,10 +50489,10 @@ ${oldComment}
 
 </details>`;
         // Step 5
-        if (selfCommentId) {
+        if (selfComment) {
             await octo.rest.issues.updateComment({
                 ...github_1.context.repo,
-                comment_id: selfCommentId,
+                comment_id: selfComment.id,
                 body: comment
             });
         }
@@ -50552,6 +50595,146 @@ rm mdk.zip
 
 To test a production environment, you can download the installer from [here](${(0, core_1.getInput)('base-maven-url')}/${github_1.context.repo.repo}/pr${prNumber}/${artifact.group}/${artifact.name}/${artifact.version}/${artifact.name}-${artifact.version}-installer.jar).`;
 }
+async function shouldPublish(octo, pr, comment) {
+    if (comment?.body) {
+        // First line
+        const firstLine = comment.body.trimStart().split('\n')[0];
+        // Check if the first line matches what we expect and that the box is ticked
+        return firstLine.trim() == `- [x] ${exports.shouldPublishCheckBox}`;
+    }
+    return await (0, utils_1.isAuthorMaintainer)(octo, pr);
+}
+async function getSelfComment(octo, prNumber) {
+    const self = (0, core_1.getInput)('self-name');
+    for await (const comments of octo.paginate.iterator(octo.rest.issues.listComments, {
+        ...github_1.context.repo,
+        issue_number: prNumber
+    })) {
+        for (const comment of comments.data) {
+            if (comment.user.login == self) {
+                return comment;
+            }
+        }
+    }
+    return undefined;
+}
+
+
+/***/ }),
+
+/***/ 1390:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getRunsOfPR = exports.runFromTrigger = void 0;
+const utils_1 = __nccwpck_require__(1314);
+const github_1 = __nccwpck_require__(5438);
+const core_1 = __nccwpck_require__(2186);
+const pr_publish_1 = __nccwpck_require__(5926);
+async function runFromTrigger() {
+    console.log(`Triggered by event '${github_1.context.eventName}', action '${github_1.context.payload.action}'`);
+    const octo = (0, utils_1.getOcto)();
+    if (github_1.context.eventName == 'pull_request_target' &&
+        github_1.context.payload.action == 'opened') {
+        await octo.rest.issues.createComment({
+            ...github_1.context.repo,
+            issue_number: github_1.context.payload.pull_request.number,
+            body: `- [${(await (0, utils_1.isAuthorMaintainer)(octo, github_1.context.payload.pull_request))
+                ? 'X'
+                : ' '}] ${pr_publish_1.shouldPublishCheckBox}`
+        });
+    }
+    else if (github_1.context.eventName == 'issue_comment' &&
+        github_1.context.payload.action == 'edited') {
+        const self = (0, core_1.getInput)('self-name');
+        if (github_1.context.payload.comment.user.login != self ||
+            github_1.context.payload.sender.login == self)
+            return;
+        if (github_1.context.payload.issue.pull_request == false) {
+            console.log(`Not a PR, aborting`);
+            return;
+        }
+        const pr = await octo.rest.pulls
+            .get({
+            ...github_1.context.repo,
+            pull_number: github_1.context.payload.issue.number
+        })
+            .then(d => d.data);
+        const prWorkflows = await getRunsOfPR(octo, pr.head.sha);
+        const runName = (0, core_1.getInput)('uploader-workflow-name');
+        const run = prWorkflows.find(flow => flow.name == runName);
+        if (!run) {
+            console.log(`No run with name ${runName} found on PR #${pr.number}`);
+            return;
+        }
+        if (run.status == 'in_progress') {
+            console.log(`Workflow run (${run.html_url}) in progress, aborting`);
+            return;
+        }
+        await (0, pr_publish_1.runPR)(octo, pr, pr.head.sha, run.id);
+    }
+}
+exports.runFromTrigger = runFromTrigger;
+async function getRunsOfPR(octo, sha) {
+    // Obtain the check runs for the head SHA1 of this pull request.
+    const check_runs = (await octo.rest.checks.listForRef({
+        ...github_1.context.repo,
+        ref: sha
+    })).data.check_runs;
+    const res = [];
+    // For every relevant run:
+    for (const run of check_runs) {
+        if (run.app.slug == 'github-actions') {
+            // Get the corresponding Actions job.
+            // The Actions job ID is the same as the Checks run ID
+            // (not to be confused with the Actions run ID).
+            const job = (await octo.rest.actions.getJobForWorkflowRun({
+                ...github_1.context.repo,
+                job_id: run.id
+            })).data;
+            // Now, get the Actions run that this job is in.
+            const actions_run = (await octo.rest.actions.getWorkflowRun({
+                ...github_1.context.repo,
+                run_id: job.run_id
+            })).data;
+            if (actions_run.event == 'pull_request') {
+                res.push(actions_run);
+            }
+        }
+    }
+    return res;
+}
+exports.getRunsOfPR = getRunsOfPR;
+
+
+/***/ }),
+
+/***/ 1314:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getOcto = exports.isAuthorMaintainer = void 0;
+const github_1 = __nccwpck_require__(5438);
+const process_1 = __importDefault(__nccwpck_require__(7282));
+async function isAuthorMaintainer(octo, pr) {
+    const perm = await octo.rest.repos.getCollaboratorPermissionLevel({
+        ...github_1.context.repo,
+        username: pr.user.login
+    });
+    return perm.data.permission == 'write' || perm.data.permission == 'admin';
+}
+exports.isAuthorMaintainer = isAuthorMaintainer;
+function getOcto() {
+    return (0, github_1.getOctokit)(process_1.default.env['GITHUB_TOKEN']);
+}
+exports.getOcto = getOcto;
 
 
 /***/ }),

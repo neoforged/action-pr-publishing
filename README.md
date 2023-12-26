@@ -17,7 +17,7 @@ Additionally, this step requires the following permissions:
 ```yml
 permissions:
   packages: write # To upload the PR
-  actions: read # To get information about the uploading workflow run
+  actions: write # To get information about the uploading workflow run and to delete the run artifacts
   contents: write # To download the `maven-publish` artifact, and to be able to create commit comments
   issues: write # To be able to create PR comments
   pull-requests: write # To be able to create PR comments
@@ -25,7 +25,7 @@ permissions:
 The actions in this step:
 1. Process information about the uploading workflow run. If not successful, abort;
 2. Download the `maven-publish` artifact that was uploaded by the uploading workflow;
-3. Upload the (filtered) contents of the artifact to a GitHub sub-package of the repository, that has the `pr<number>.` prefix;
+3. Upload the (filtered) contents of the artifact to a GitHub sub-package of the repository, that has the `pr<number>.` prefix; delete the workflow artifact so that in the future re-publishing is not attempted;
 4. **OPTIONAL STEP**, only if the repository's name is `NeoForge`: generate an MDK pointing to the published version of the PR (more information on mdk generation [below](#mdk-generation));
 5. Comment on the PR with information on the published artifacts (and an MDK link and installer link if necessary), or update an existing comment;
 6. Comment on the commit with the same message as above.

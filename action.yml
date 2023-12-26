@@ -11,6 +11,10 @@ inputs:
   base-maven-url:
     description: 'The base public PR maven URL'
     default: 'https://prmaven.neoforged.net'
+  uploader-workflow-name:
+    required: false
+    default: ''
+    description: 'The name of the workflow uploading the PR artifacts'
 
 runs:
   using: node20
