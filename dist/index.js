@@ -50320,7 +50320,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.run = void 0;
+exports.runPR = exports.run = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const github_1 = __nccwpck_require__(5438);
 const axios_1 = __importDefault(__nccwpck_require__(8757));
@@ -50331,15 +50331,26 @@ const fast_xml_parser_1 = __nccwpck_require__(2603);
 // 50mb
 const artifactLimit = 50 * 1000000;
 async function run() {
+    const token = process.env['GITHUB_TOKEN'];
+    const octo = (0, github_1.getOctokit)(token);
+    const workflow_run = github_1.context.payload.workflow_run;
+    // Step 1
+    if (workflow_run.conclusion != 'success') {
+        console.log('Aborting, workflow run was not successful');
+        return;
+    }
+    if (workflow_run.pull_requests.length < 1) {
+        console.log(`No open PR associated...`);
+        return;
+    }
+    const pr = workflow_run.pull_requests[0];
+    await runPR(octo, pr.number, workflow_run.head_sha, workflow_run);
+}
+exports.run = run;
+async function runPR(octo, prNumber, headSha, workflow_run) {
     try {
+        console.log(`PR number: ${prNumber}`);
         const token = process.env['GITHUB_TOKEN'];
-        const octo = (0, github_1.getOctokit)(token);
-        const workflow_run = github_1.context.payload.workflow_run;
-        // Step 1
-        if (workflow_run.conclusion != 'success') {
-            console.log('Aborting, workflow run was not successful');
-            return;
-        }
         // Step 2
         const artifact = await octo.rest.actions
             .listWorkflowRunArtifacts({
@@ -50359,13 +50370,10 @@ async function run() {
             }
         });
         const zip = await jszip_1.default.loadAsync(response.data);
-        const payload = JSON.parse(await zip.file('event.json').async('string'));
-        const prNumber = (payload.pull_request?.number ?? 0);
-        console.log(`PR number: ${prNumber}`);
         // Step 3
         const filter = (0, core_1.getInput)('artifacts-base-path');
         const toUpload = zip.filter((_relativePath, file) => {
-            return (!file.dir && file.name != 'event.json' && file.name.startsWith(filter));
+            return !file.dir && file.name.startsWith(filter);
         });
         const artifacts = [];
         const basePath = `https://maven.pkg.github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/pr${prNumber}/`;
@@ -50455,7 +50463,7 @@ ${oldComment}
         // Step 6
         await octo.rest.repos.createCommitComment({
             ...github_1.context.repo,
-            commit_sha: payload.pull_request.head.sha,
+            commit_sha: headSha,
             body: comment
         });
     }
@@ -50468,7 +50476,7 @@ ${oldComment}
         }
     }
 }
-exports.run = run;
+exports.runPR = runPR;
 async function generateComment(octo, prNumber, artifacts) {
     let comment = `### The artifacts published by this PR:  `;
     for (const artifactName of artifacts) {

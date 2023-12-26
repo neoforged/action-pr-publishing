@@ -11,18 +11,36 @@ import { XMLParser } from 'fast-xml-parser'
 const artifactLimit = 50 * 1000000
 
 export async function run(): Promise<void> {
+  const token = process.env['GITHUB_TOKEN']!
+  const octo: InstanceType<typeof GitHub> = getOctokit(token)
+
+  const workflow_run = context.payload.workflow_run as WorkflowRun
+
+  // Step 1
+  if (workflow_run.conclusion != 'success') {
+    console.log('Aborting, workflow run was not successful')
+    return
+  }
+
+  if (workflow_run.pull_requests.length < 1) {
+    console.log(`No open PR associated...`)
+    return
+  }
+  const pr = workflow_run.pull_requests[0]
+
+  await runPR(octo, pr.number, workflow_run.head_sha, workflow_run)
+}
+
+export async function runPR(
+  octo: InstanceType<typeof GitHub>,
+  prNumber: number,
+  headSha: string,
+  workflow_run: WorkflowRun
+) {
   try {
+    console.log(`PR number: ${prNumber}`)
+
     const token = process.env['GITHUB_TOKEN']!
-
-    const octo: InstanceType<typeof GitHub> = getOctokit(token)
-
-    const workflow_run = context.payload.workflow_run as WorkflowRun
-
-    // Step 1
-    if (workflow_run.conclusion != 'success') {
-      console.log('Aborting, workflow run was not successful')
-      return
-    }
 
     // Step 2
     const artifact = await octo.rest.actions
@@ -49,18 +67,10 @@ export async function run(): Promise<void> {
 
     const zip = await JSZip.loadAsync(response.data)
 
-    const payload = JSON.parse(await zip.file('event.json')!.async('string'))
-
-    const prNumber = (payload.pull_request?.number ?? 0) as number
-
-    console.log(`PR number: ${prNumber}`)
-
     // Step 3
     const filter = getInput('artifacts-base-path')
     const toUpload = zip.filter((_relativePath, file) => {
-      return (
-        !file.dir && file.name != 'event.json' && file.name.startsWith(filter)
-      )
+      return !file.dir && file.name.startsWith(filter)
     })
 
     const artifacts: PublishedArtifact[] = []
@@ -180,7 +190,7 @@ ${oldComment}
     // Step 6
     await octo.rest.repos.createCommitComment({
       ...context.repo,
-      commit_sha: payload.pull_request.head.sha,
+      commit_sha: headSha,
       body: comment
     })
   } catch (error) {
@@ -320,6 +330,13 @@ To test a production environment, you can download the installer from [here](${g
 interface WorkflowRun {
   id: number
   conclusion: 'success' | 'failure'
+  head_branch: string
+  pull_requests: PR[]
+  head_sha: string
+}
+
+interface PR {
+  number: number
 }
 
 interface PublishedArtifact {
