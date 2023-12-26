@@ -15,6 +15,9 @@ inputs:
     required: false
     default: ''
     description: 'The name of the workflow uploading the PR artifacts'
+  publishing-token:
+    required: false
+    description: 'The token to use for publishing'
 
 runs:
   using: node20

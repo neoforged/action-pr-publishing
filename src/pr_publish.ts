@@ -8,6 +8,7 @@ import { getInput } from '@actions/core'
 import { XMLParser } from 'fast-xml-parser'
 import { getOcto, isAuthorMaintainer } from './utils'
 import { PullRequest } from './types'
+import { CheckRun } from './check_runs'
 
 // 50mb
 const artifactLimit = 50 * 1000000
@@ -68,14 +69,20 @@ export async function runPR(
   headSha: string,
   runId: number
 ) {
+  const check = new CheckRun(octo, pr)
+
   try {
+    await check.start()
+
     const prNumber = pr.number
     console.log(`PR number: ${prNumber}`)
 
-    const token = process.env['GITHUB_TOKEN']!
+    const publishingToken =
+      getInput('publishing-token') ?? process.env['GITHUB_TOKEN']!
 
     const selfComment = await getSelfComment(octo, prNumber)
     if (!(await shouldPublish(octo, pr, selfComment))) {
+      await check.skipped()
       console.log(`PR is not published as checkbox is not ticked`)
       return
     }
@@ -88,14 +95,21 @@ export async function runPR(
       })
       .then(art => art.data.artifacts.find(ar => ar.name == 'maven-publish'))
     if (!artifact) {
+      await check.succeed(
+        undefined,
+        `Found no artifacts to publish`,
+        [] as PublishedArtifact[]
+      )
       console.log(`Found no artifact to publish from run #${runId}`)
       return
     }
 
     if (artifact!.size_in_bytes > artifactLimit) {
-      core.setFailed(
-        `Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`
-      )
+      const msg = `Artifact is bigger than maximum allowed ${
+        artifactLimit / 1000000
+      }mb!`
+      await check.failed(new Error(msg))
+      core.setFailed(msg)
       return
     }
 
@@ -104,7 +118,7 @@ export async function runPR(
     const response = await axios.get(artifact!!.archive_download_url, {
       responseType: 'arraybuffer',
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${process.env['GITHUB_TOKEN']!}`
       }
     })
 
@@ -123,16 +137,21 @@ export async function runPR(
       await axios.put(basePath + path, bf, {
         auth: {
           username: 'actions',
-          password: token
+          password: publishingToken
         }
       })
     }
 
     let uploadAmount = 0
     for (const file of toUpload) {
-      await uploader(file.name, await file.async('arraybuffer'))
-      console.log(`Uploaded ${file.name}`)
-      uploadAmount++
+      try {
+        await uploader(file.name, await file.async('arraybuffer'))
+        console.log(`Uploaded ${file.name}`)
+        uploadAmount++
+      } catch (err) {
+        console.log(`Failed to upload file ${file.name}: ${err}`)
+        throw err
+      }
 
       if (file.name.endsWith('maven-metadata.xml')) {
         const metadata = new XMLParser().parse(
@@ -165,9 +184,7 @@ export async function runPR(
       artifact_id: artifact.id
     })
 
-    if (pr.state != 'open') return
-
-    let { comment, repoBlock } = await generateComment(
+    let { comment, repoBlock, firstPublishUrl } = await generateComment(
       octo,
       prNumber,
       artifacts
@@ -191,6 +208,7 @@ export async function runPR(
     const oldComment = comment
     comment = `
 - [x] ${shouldPublishCheckBox}
+
 Last commit published: [${headSha}](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${headSha}).
 
 <details>
@@ -222,9 +240,12 @@ ${oldComment}
       commit_sha: headSha,
       body: comment
     })
+
+    await check.succeed(firstPublishUrl, oldComment, artifacts)
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) {
+      await check.failed(error)
       console.log(`Error: ${error.message}`)
       console.log(error.stack)
       core.setFailed(error.message)
@@ -239,8 +260,10 @@ async function generateComment(
 ): Promise<{
   comment: string
   repoBlock: string
+  firstPublishUrl?: string
 }> {
   let comment = `### The artifacts published by this PR:  `
+  let firstPublishUrl: string | undefined = undefined
   for (const artifactName of artifacts) {
     const artifact = await octo.rest.packages.getPackageForOrganization({
       org: context.repo.owner,
@@ -249,6 +272,9 @@ async function generateComment(
     })
 
     comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`
+    if (!firstPublishUrl) {
+      firstPublishUrl = artifact.data.html_url
+    }
   }
   comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`
   const includeModules = artifacts
@@ -270,7 +296,7 @@ ${includeModules}
 \`\`\`gradle
 ${repoBlock}
 \`\`\``
-  return { comment, repoBlock }
+  return { comment, repoBlock, firstPublishUrl }
 }
 
 // NeoForge repo specific
@@ -414,7 +440,7 @@ interface WorkflowRun {
   head_sha: string
 }
 
-interface PublishedArtifact {
+export interface PublishedArtifact {
   group: string
   name: string
   version: string

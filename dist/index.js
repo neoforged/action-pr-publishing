@@ -50288,6 +50288,76 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 8561:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CheckRun = void 0;
+const github_1 = __nccwpck_require__(5438);
+const utils_1 = __nccwpck_require__(1314);
+class CheckRun {
+    octo;
+    reference;
+    id = 0;
+    constructor(octo, pr) {
+        this.octo = octo;
+        this.reference = pr.head.sha;
+    }
+    async start() {
+        this.id = (await this.octo.rest.checks.create({
+            ...github_1.context.repo,
+            head_sha: this.reference,
+            name: 'PR Publishing',
+            status: 'in_progress'
+        })).data.id;
+    }
+    async skipped() {
+        await this.octo.rest.checks.update({
+            ...github_1.context.repo,
+            check_run_id: this.id,
+            conclusion: 'skipped',
+            output: {
+                title: 'Publishing skipped',
+                summary: "Publishing skipped as the publishing checkbox wasn't ticked"
+            }
+        });
+    }
+    async failed(err) {
+        await this.octo.rest.checks.update({
+            ...github_1.context.repo,
+            check_run_id: this.id,
+            conclusion: 'failure',
+            output: {
+                title: 'Publishing failed',
+                summary: `Publishing failure: \`${err.message}\``
+            },
+            details_url: (0, utils_1.getRunURL)()
+        });
+    }
+    async succeed(deploymentUrl, message, artifacts) {
+        const artifactsPlural = 'artifact' + (artifacts.length == 1 ? '' : 's');
+        await this.octo.rest.checks.update({
+            ...github_1.context.repo,
+            check_run_id: this.id,
+            details_url: deploymentUrl,
+            conclusion: 'success',
+            output: {
+                title: `PR Publishing - ${artifacts.length} ${artifactsPlural}`,
+                summary: `PR published ${artifacts.length} ${artifactsPlural}\n${artifacts
+                    .map(art => `\t\`${art.group}:${art.name}:${art.version}\``)
+                    .join('\n')}`,
+                text: message
+            }
+        });
+    }
+}
+exports.CheckRun = CheckRun;
+
+
+/***/ }),
+
 /***/ 399:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -50352,6 +50422,7 @@ const process = __importStar(__nccwpck_require__(7282));
 const core_1 = __nccwpck_require__(2186);
 const fast_xml_parser_1 = __nccwpck_require__(2603);
 const utils_1 = __nccwpck_require__(1314);
+const check_runs_1 = __nccwpck_require__(8561);
 // 50mb
 const artifactLimit = 50 * 1000000;
 exports.shouldPublishCheckBox = 'Publish PR to GitHub Packages';
@@ -50392,12 +50463,15 @@ async function runFromWorkflow() {
 }
 exports.runFromWorkflow = runFromWorkflow;
 async function runPR(octo, pr, headSha, runId) {
+    const check = new check_runs_1.CheckRun(octo, pr);
     try {
+        await check.start();
         const prNumber = pr.number;
         console.log(`PR number: ${prNumber}`);
-        const token = process.env['GITHUB_TOKEN'];
+        const publishingToken = (0, core_1.getInput)('publishing-token') ?? process.env['GITHUB_TOKEN'];
         const selfComment = await getSelfComment(octo, prNumber);
         if (!(await shouldPublish(octo, pr, selfComment))) {
+            await check.skipped();
             console.log(`PR is not published as checkbox is not ticked`);
             return;
         }
@@ -50409,18 +50483,21 @@ async function runPR(octo, pr, headSha, runId) {
         })
             .then(art => art.data.artifacts.find(ar => ar.name == 'maven-publish'));
         if (!artifact) {
+            await check.succeed(undefined, `Found no artifacts to publish`, []);
             console.log(`Found no artifact to publish from run #${runId}`);
             return;
         }
         if (artifact.size_in_bytes > artifactLimit) {
-            core.setFailed(`Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`);
+            const msg = `Artifact is bigger than maximum allowed ${artifactLimit / 1000000}mb!`;
+            await check.failed(new Error(msg));
+            core.setFailed(msg);
             return;
         }
         console.log(`Found artifact: ${artifact.archive_download_url}`);
         const response = await axios_1.default.get(artifact.archive_download_url, {
             responseType: 'arraybuffer',
             headers: {
-                Authorization: `Bearer ${token}`
+                Authorization: `Bearer ${process.env['GITHUB_TOKEN']}`
             }
         });
         const zip = await jszip_1.default.loadAsync(response.data);
@@ -50435,15 +50512,21 @@ async function runPR(octo, pr, headSha, runId) {
             await axios_1.default.put(basePath + path, bf, {
                 auth: {
                     username: 'actions',
-                    password: token
+                    password: publishingToken
                 }
             });
         };
         let uploadAmount = 0;
         for (const file of toUpload) {
-            await uploader(file.name, await file.async('arraybuffer'));
-            console.log(`Uploaded ${file.name}`);
-            uploadAmount++;
+            try {
+                await uploader(file.name, await file.async('arraybuffer'));
+                console.log(`Uploaded ${file.name}`);
+                uploadAmount++;
+            }
+            catch (err) {
+                console.log(`Failed to upload file ${file.name}: ${err}`);
+                throw err;
+            }
             if (file.name.endsWith('maven-metadata.xml')) {
                 const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).metadata;
                 // Use the path as the artifact name and group just in case
@@ -50466,9 +50549,7 @@ async function runPR(octo, pr, headSha, runId) {
             ...github_1.context.repo,
             artifact_id: artifact.id
         });
-        if (pr.state != 'open')
-            return;
-        let { comment, repoBlock } = await generateComment(octo, prNumber, artifacts);
+        let { comment, repoBlock, firstPublishUrl } = await generateComment(octo, prNumber, artifacts);
         // Step 4
         if (github_1.context.repo.repo.toLowerCase() == 'neoforge') {
             const neoArtifact = artifacts.find(art => art.group == 'net.neoforged' && art.name == 'neoforge');
@@ -50479,6 +50560,7 @@ async function runPR(octo, pr, headSha, runId) {
         const oldComment = comment;
         comment = `
 - [x] ${exports.shouldPublishCheckBox}
+
 Last commit published: [${headSha}](https://github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/commit/${headSha}).
 
 <details>
@@ -50509,10 +50591,12 @@ ${oldComment}
             commit_sha: headSha,
             body: comment
         });
+        await check.succeed(firstPublishUrl, oldComment, artifacts);
     }
     catch (error) {
         // Fail the workflow run if an error occurs
         if (error instanceof Error) {
+            await check.failed(error);
             console.log(`Error: ${error.message}`);
             console.log(error.stack);
             core.setFailed(error.message);
@@ -50522,6 +50606,7 @@ ${oldComment}
 exports.runPR = runPR;
 async function generateComment(octo, prNumber, artifacts) {
     let comment = `### The artifacts published by this PR:  `;
+    let firstPublishUrl = undefined;
     for (const artifactName of artifacts) {
         const artifact = await octo.rest.packages.getPackageForOrganization({
             org: github_1.context.repo.owner,
@@ -50529,6 +50614,9 @@ async function generateComment(octo, prNumber, artifacts) {
             package_name: `pr${prNumber}.${artifactName.group}.${artifactName.name}`
         });
         comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`;
+        if (!firstPublishUrl) {
+            firstPublishUrl = artifact.data.html_url;
+        }
     }
     comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`;
     const includeModules = artifacts
@@ -50548,7 +50636,7 @@ ${includeModules}
 \`\`\`gradle
 ${repoBlock}
 \`\`\``;
-    return { comment, repoBlock };
+    return { comment, repoBlock, firstPublishUrl };
 }
 // NeoForge repo specific
 async function generateMDK(uploader, prNumber, artifact, repoBlock) {
@@ -50720,7 +50808,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getOcto = exports.isAuthorMaintainer = void 0;
+exports.getRunURL = exports.getOcto = exports.isAuthorMaintainer = void 0;
 const github_1 = __nccwpck_require__(5438);
 const process_1 = __importDefault(__nccwpck_require__(7282));
 async function isAuthorMaintainer(octo, pr) {
@@ -50735,6 +50823,10 @@ function getOcto() {
     return (0, github_1.getOctokit)(process_1.default.env['GITHUB_TOKEN']);
 }
 exports.getOcto = getOcto;
+function getRunURL() {
+    return `${process_1.default.env['GITHUB_SERVER_URL']}/${process_1.default.env['GITHUB_REPOSITORY']}/actions/runs/${process_1.default.env['GITHUB_RUN_ID']}`;
+}
+exports.getRunURL = getRunURL;
 
 
 /***/ }),
