@@ -9,6 +9,7 @@ import { XMLParser } from 'fast-xml-parser'
 import { getOcto, isAuthorMaintainer } from './utils'
 import { PullRequest } from './types'
 import { CheckRun } from './check_runs'
+import { createInitialComment } from './pr_triggers'
 
 // 50mb
 const artifactLimit = 50 * 1000000
@@ -80,7 +81,11 @@ export async function runPR(
     const publishingToken =
       getInput('publishing-token') ?? process.env['GITHUB_TOKEN']!
 
-    const selfComment = await getSelfComment(octo, prNumber)
+    let selfComment = await getSelfComment(octo, prNumber)
+    if (!selfComment) {
+      selfComment = await createInitialComment(octo, pr)
+    }
+
     if (!(await shouldPublish(octo, pr, selfComment))) {
       await check.skipped()
       console.log(`PR is not published as checkbox is not ticked`)

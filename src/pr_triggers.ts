@@ -4,6 +4,7 @@ import { getInput } from '@actions/core'
 import { runPR, shouldPublishCheckBox } from './pr_publish'
 import { GitHub } from '@actions/github/lib/utils'
 import { PullRequest, WorkflowRun } from './types'
+import { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods/dist-types/generated/parameters-and-response-types'
 
 export async function runFromTrigger() {
   console.log(
@@ -14,18 +15,10 @@ export async function runFromTrigger() {
     context.eventName == 'pull_request_target' &&
     context.payload.action == 'opened'
   ) {
-    await octo.rest.issues.createComment({
-      ...context.repo,
-      issue_number: context.payload.pull_request!.number,
-      body: `- [${
-        (await isAuthorMaintainer(
-          octo,
-          context.payload.pull_request! as PullRequest
-        ))
-          ? 'X'
-          : ' '
-      }] ${shouldPublishCheckBox}`
-    })
+    await createInitialComment(
+      octo,
+      context.payload.pull_request! as PullRequest
+    )
   } else if (
     context.eventName == 'issue_comment' &&
     context.payload.action == 'edited'
@@ -63,6 +56,23 @@ export async function runFromTrigger() {
 
     await runPR(octo, pr, pr.head.sha, run.id)
   }
+}
+
+export async function createInitialComment(
+  octo: InstanceType<typeof GitHub>,
+  pr: PullRequest
+): Promise<
+  RestEndpointMethodTypes['issues']['createComment']['response']['data']
+> {
+  return await octo.rest.issues
+    .createComment({
+      ...context.repo,
+      issue_number: pr.number,
+      body: `- [${
+        (await isAuthorMaintainer(octo, pr)) ? 'X' : ' '
+      }] ${shouldPublishCheckBox}`
+    })
+    .then(res => res.data)
 }
 
 export async function getRunsOfPR(

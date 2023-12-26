@@ -50423,6 +50423,7 @@ const core_1 = __nccwpck_require__(2186);
 const fast_xml_parser_1 = __nccwpck_require__(2603);
 const utils_1 = __nccwpck_require__(1314);
 const check_runs_1 = __nccwpck_require__(8561);
+const pr_triggers_1 = __nccwpck_require__(1390);
 // 50mb
 const artifactLimit = 50 * 1000000;
 exports.shouldPublishCheckBox = 'Publish PR to GitHub Packages';
@@ -50469,7 +50470,10 @@ async function runPR(octo, pr, headSha, runId) {
         const prNumber = pr.number;
         console.log(`PR number: ${prNumber}`);
         const publishingToken = (0, core_1.getInput)('publishing-token') ?? process.env['GITHUB_TOKEN'];
-        const selfComment = await getSelfComment(octo, prNumber);
+        let selfComment = await getSelfComment(octo, prNumber);
+        if (!selfComment) {
+            selfComment = await (0, pr_triggers_1.createInitialComment)(octo, pr);
+        }
         if (!(await shouldPublish(octo, pr, selfComment))) {
             await check.skipped();
             console.log(`PR is not published as checkbox is not ticked`);
@@ -50718,7 +50722,7 @@ async function getSelfComment(octo, prNumber) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getRunsOfPR = exports.runFromTrigger = void 0;
+exports.getRunsOfPR = exports.createInitialComment = exports.runFromTrigger = void 0;
 const utils_1 = __nccwpck_require__(1314);
 const github_1 = __nccwpck_require__(5438);
 const core_1 = __nccwpck_require__(2186);
@@ -50728,13 +50732,7 @@ async function runFromTrigger() {
     const octo = (0, utils_1.getOcto)();
     if (github_1.context.eventName == 'pull_request_target' &&
         github_1.context.payload.action == 'opened') {
-        await octo.rest.issues.createComment({
-            ...github_1.context.repo,
-            issue_number: github_1.context.payload.pull_request.number,
-            body: `- [${(await (0, utils_1.isAuthorMaintainer)(octo, github_1.context.payload.pull_request))
-                ? 'X'
-                : ' '}] ${pr_publish_1.shouldPublishCheckBox}`
-        });
+        await createInitialComment(octo, github_1.context.payload.pull_request);
     }
     else if (github_1.context.eventName == 'issue_comment' &&
         github_1.context.payload.action == 'edited') {
@@ -50767,6 +50765,16 @@ async function runFromTrigger() {
     }
 }
 exports.runFromTrigger = runFromTrigger;
+async function createInitialComment(octo, pr) {
+    return await octo.rest.issues
+        .createComment({
+        ...github_1.context.repo,
+        issue_number: pr.number,
+        body: `- [${(await (0, utils_1.isAuthorMaintainer)(octo, pr)) ? 'X' : ' '}] ${pr_publish_1.shouldPublishCheckBox}`
+    })
+        .then(res => res.data);
+}
+exports.createInitialComment = createInitialComment;
 async function getRunsOfPR(octo, sha) {
     // Obtain the check runs for the head SHA1 of this pull request.
     const check_runs = (await octo.rest.checks.listForRef({
