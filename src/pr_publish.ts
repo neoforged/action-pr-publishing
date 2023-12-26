@@ -392,7 +392,11 @@ async function shouldPublish(
     const firstLine = comment.body.trimStart().split('\n')[0]
 
     // Check if the first line matches what we expect and that the box is ticked
-    return firstLine.trim() == `- [x] ${shouldPublishCheckBox}`
+    // Both upper and lower case are valid
+    return (
+      firstLine.trim() == `- [x] ${shouldPublishCheckBox}` ||
+      firstLine.trim() == `- [X] ${shouldPublishCheckBox}`
+    )
   }
 
   return await isAuthorMaintainer(octo, pr)

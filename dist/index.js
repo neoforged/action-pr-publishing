@@ -50688,7 +50688,9 @@ async function shouldPublish(octo, pr, comment) {
         // First line
         const firstLine = comment.body.trimStart().split('\n')[0];
         // Check if the first line matches what we expect and that the box is ticked
-        return firstLine.trim() == `- [x] ${exports.shouldPublishCheckBox}`;
+        // Both upper and lower case are valid
+        return (firstLine.trim() == `- [x] ${exports.shouldPublishCheckBox}` ||
+            firstLine.trim() == `- [X] ${exports.shouldPublishCheckBox}`);
     }
     return await (0, utils_1.isAuthorMaintainer)(octo, pr);
 }
