@@ -151,11 +151,12 @@ export async function runPR(
     let uploadAmount = 0
     for (const file of toUpload) {
       try {
+        console.debug(`Uploading ${file.name}`)
         await uploader(file.name, await file.async('arraybuffer'))
-        console.log(`Uploaded ${file.name}`)
+        console.debug(`Uploaded ${file.name}`)
         uploadAmount++
       } catch (err) {
-        console.log(`Failed to upload file ${file.name}: ${err}`)
+        console.error(`Failed to upload file ${file.name}: ${err}`)
         throw err
       }
 
@@ -189,7 +190,7 @@ export async function runPR(
           val => val.name == artifact.version
         )
         if (existingPackage) {
-          console.log(
+          console.warn(
             `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
           )
           await octo.rest.packages.deletePackageVersionForOrg({

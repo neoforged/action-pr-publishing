@@ -7,7 +7,7 @@ import { PullRequest, WorkflowRun } from './types'
 import { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods/dist-types/generated/parameters-and-response-types'
 
 export async function runFromTrigger() {
-  console.log(
+  console.debug(
     `Triggered by event '${context.eventName}', action '${context.payload.action}'`
   )
   const octo = getOcto()
@@ -50,7 +50,7 @@ export async function runFromTrigger() {
     }
 
     if (run.status == 'in_progress') {
-      console.log(`Workflow run (${run.html_url}) in progress, aborting`)
+      console.warn(`Workflow run (${run.html_url}) in progress, aborting`)
       return
     }
 

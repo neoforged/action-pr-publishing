@@ -50523,12 +50523,13 @@ async function runPR(octo, pr, headSha, runId) {
         let uploadAmount = 0;
         for (const file of toUpload) {
             try {
+                console.debug(`Uploading ${file.name}`);
                 await uploader(file.name, await file.async('arraybuffer'));
-                console.log(`Uploaded ${file.name}`);
+                console.debug(`Uploaded ${file.name}`);
                 uploadAmount++;
             }
             catch (err) {
-                console.log(`Failed to upload file ${file.name}: ${err}`);
+                console.error(`Failed to upload file ${file.name}: ${err}`);
                 throw err;
             }
             if (file.name.endsWith('maven-metadata.xml')) {
@@ -50553,7 +50554,7 @@ async function runPR(octo, pr, headSha, runId) {
                     .catch(_ => []);
                 const existingPackage = alreadyPublished.find(val => val.name == artifact.version);
                 if (existingPackage) {
-                    console.log(`Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`);
+                    console.warn(`Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`);
                     await octo.rest.packages.deletePackageVersionForOrg({
                         org: github_1.context.repo.owner,
                         package_type: 'maven',
@@ -50750,7 +50751,7 @@ const github_1 = __nccwpck_require__(5438);
 const core_1 = __nccwpck_require__(2186);
 const pr_publish_1 = __nccwpck_require__(5926);
 async function runFromTrigger() {
-    console.log(`Triggered by event '${github_1.context.eventName}', action '${github_1.context.payload.action}'`);
+    console.debug(`Triggered by event '${github_1.context.eventName}', action '${github_1.context.payload.action}'`);
     const octo = (0, utils_1.getOcto)();
     if (github_1.context.eventName == 'pull_request_target' &&
         github_1.context.payload.action == 'opened') {
@@ -50780,7 +50781,7 @@ async function runFromTrigger() {
             return;
         }
         if (run.status == 'in_progress') {
-            console.log(`Workflow run (${run.html_url}) in progress, aborting`);
+            console.warn(`Workflow run (${run.html_url}) in progress, aborting`);
             return;
         }
         await (0, pr_publish_1.runPR)(octo, pr, pr.head.sha, run.id);
