@@ -10,6 +10,7 @@ import { getOcto, isAuthorMaintainer } from './utils'
 import { PullRequest } from './types'
 import { CheckRun } from './check_runs'
 import { createInitialComment } from './pr_triggers'
+import { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods/dist-types/generated/parameters-and-response-types'
 
 // 50mb
 const artifactLimit = 50 * 1000000
@@ -167,11 +168,37 @@ export async function runPR(
         const split = file.name.split('/')
         split.pop()
         const name = split.pop()
-        artifacts.push({
+        const artifact: PublishedArtifact = {
           group: split.join('.'),
           name: name!,
           version: metadata.versioning.latest
-        })
+        }
+        artifacts.push(artifact)
+
+        const alreadyPublished: RestEndpointMethodTypes['packages']['getAllPackageVersionsForPackageOwnedByOrg']['response']['data'] =
+          await octo.rest.packages
+            .getAllPackageVersionsForPackageOwnedByOrg({
+              org: context.repo.owner,
+              package_type: 'maven',
+              package_name: getPackageName(prNumber, artifact)
+            })
+            .then(e => e.data)
+            .catch(_ => [])
+
+        const existingPackage = alreadyPublished.find(
+          val => val.name == artifact.version
+        )
+        if (existingPackage) {
+          console.log(
+            `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
+          )
+          await octo.rest.packages.deletePackageVersionForOrg({
+            org: context.repo.owner,
+            package_type: 'maven',
+            package_name: getPackageName(prNumber, artifact),
+            package_version_id: existingPackage.id
+          })
+        }
       }
     }
 
@@ -273,7 +300,7 @@ async function generateComment(
     const artifact = await octo.rest.packages.getPackageForOrganization({
       org: context.repo.owner,
       package_type: 'maven',
-      package_name: `pr${prNumber}.${artifactName.group}.${artifactName.name}`
+      package_name: getPackageName(prNumber, artifactName)
     })
 
     comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`
@@ -456,4 +483,8 @@ export interface PublishedArtifact {
   group: string
   name: string
   version: string
+}
+
+function getPackageName(prNumber: number, artifact: PublishedArtifact) {
+  return `pr${prNumber}.${artifact.group}.${artifact.name}`
 }

@@ -50537,11 +50537,30 @@ async function runPR(octo, pr, headSha, runId) {
                 const split = file.name.split('/');
                 split.pop();
                 const name = split.pop();
-                artifacts.push({
+                const artifact = {
                     group: split.join('.'),
                     name: name,
                     version: metadata.versioning.latest
-                });
+                };
+                artifacts.push(artifact);
+                const alreadyPublished = await octo.rest.packages
+                    .getAllPackageVersionsForPackageOwnedByOrg({
+                    org: github_1.context.repo.owner,
+                    package_type: 'maven',
+                    package_name: getPackageName(prNumber, artifact)
+                })
+                    .then(e => e.data)
+                    .catch(_ => []);
+                const existingPackage = alreadyPublished.find(val => val.name == artifact.version);
+                if (existingPackage) {
+                    console.log(`Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`);
+                    await octo.rest.packages.deletePackageVersionForOrg({
+                        org: github_1.context.repo.owner,
+                        package_type: 'maven',
+                        package_name: getPackageName(prNumber, artifact),
+                        package_version_id: existingPackage.id
+                    });
+                }
             }
         }
         console.log(`Finished uploading ${uploadAmount} items`);
@@ -50615,7 +50634,7 @@ async function generateComment(octo, prNumber, artifacts) {
         const artifact = await octo.rest.packages.getPackageForOrganization({
             org: github_1.context.repo.owner,
             package_type: 'maven',
-            package_name: `pr${prNumber}.${artifactName.group}.${artifactName.name}`
+            package_name: getPackageName(prNumber, artifactName)
         });
         comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`;
         if (!firstPublishUrl) {
@@ -50711,6 +50730,9 @@ async function getSelfComment(octo, prNumber) {
         }
     }
     return undefined;
+}
+function getPackageName(prNumber, artifact) {
+    return `pr${prNumber}.${artifact.group}.${artifact.name}`;
 }
 
 
