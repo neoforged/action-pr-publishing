@@ -183,12 +183,13 @@ export async function runPR(
         }
         artifacts.push(artifact)
 
+        const packageName = getPackageName(prNumber, artifact)
         const alreadyPublished: RestEndpointMethodTypes['packages']['getAllPackageVersionsForPackageOwnedByOrg']['response']['data'] =
           await octo.rest.packages
             .getAllPackageVersionsForPackageOwnedByOrg({
               org: context.repo.owner,
               package_type: 'maven',
-              package_name: getPackageName(prNumber, artifact)
+              package_name: packageName
             })
             .then(e => e.data)
             .catch(_ => [])
@@ -197,15 +198,27 @@ export async function runPR(
           val => val.name == artifact.version
         )
         if (existingPackage) {
-          console.warn(
-            `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
-          )
-          await octo.rest.packages.deletePackageVersionForOrg({
-            org: context.repo.owner,
-            package_type: 'maven',
-            package_name: getPackageName(prNumber, artifact),
-            package_version_id: existingPackage.id
-          })
+          // If we only published one artifact in the past we have to delete the whole package
+          if (alreadyPublished.length == 1) {
+            console.warn(`Deleting existing package '${packageName}'`)
+
+            await octo.rest.packages.deletePackageForOrg({
+              org: context.repo.owner,
+              package_type: 'maven',
+              package_name: packageName
+            })
+          } else {
+            console.warn(
+              `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
+            )
+
+            await octo.rest.packages.deletePackageVersionForOrg({
+              org: context.repo.owner,
+              package_type: 'maven',
+              package_name: packageName,
+              package_version_id: existingPackage.id
+            })
+          }
         }
       }
     }

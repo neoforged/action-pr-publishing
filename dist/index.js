@@ -50549,23 +50549,35 @@ async function runPR(octo, pr, headSha, runId) {
                     version: metadata.versioning.latest
                 };
                 artifacts.push(artifact);
+                const packageName = getPackageName(prNumber, artifact);
                 const alreadyPublished = await octo.rest.packages
                     .getAllPackageVersionsForPackageOwnedByOrg({
                     org: github_1.context.repo.owner,
                     package_type: 'maven',
-                    package_name: getPackageName(prNumber, artifact)
+                    package_name: packageName
                 })
                     .then(e => e.data)
                     .catch(_ => []);
                 const existingPackage = alreadyPublished.find(val => val.name == artifact.version);
                 if (existingPackage) {
-                    console.warn(`Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`);
-                    await octo.rest.packages.deletePackageVersionForOrg({
-                        org: github_1.context.repo.owner,
-                        package_type: 'maven',
-                        package_name: getPackageName(prNumber, artifact),
-                        package_version_id: existingPackage.id
-                    });
+                    // If we only published one artifact in the past we have to delete the whole package
+                    if (alreadyPublished.length == 1) {
+                        console.warn(`Deleting existing package '${packageName}'`);
+                        await octo.rest.packages.deletePackageForOrg({
+                            org: github_1.context.repo.owner,
+                            package_type: 'maven',
+                            package_name: packageName
+                        });
+                    }
+                    else {
+                        console.warn(`Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`);
+                        await octo.rest.packages.deletePackageVersionForOrg({
+                            org: github_1.context.repo.owner,
+                            package_type: 'maven',
+                            package_name: packageName,
+                            package_version_id: existingPackage.id
+                        });
+                    }
                 }
             }
         }
