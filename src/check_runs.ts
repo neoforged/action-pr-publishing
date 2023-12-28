@@ -19,7 +19,8 @@ export class CheckRun {
         ...context.repo,
         head_sha: this.reference,
         name: 'PR Publishing',
-        status: 'in_progress'
+        status: 'in_progress',
+        details_url: getRunURL()
       })
     ).data.id
   }

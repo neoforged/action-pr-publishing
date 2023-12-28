@@ -50310,7 +50310,8 @@ class CheckRun {
             ...github_1.context.repo,
             head_sha: this.reference,
             name: 'PR Publishing',
-            status: 'in_progress'
+            status: 'in_progress',
+            details_url: (0, utils_1.getRunURL)()
         })).data.id;
     }
     async skipped() {
