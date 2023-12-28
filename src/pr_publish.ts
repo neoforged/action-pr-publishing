@@ -173,7 +173,7 @@ export async function runPR(
         ).metadata
 
         // Skip the snapshot metadata from being considered as a "version" metadata
-        if (metadata.versioning.snapshot.timestamp) {
+        if (metadata.versioning?.snapshot?.timestamp) {
           continue
         }
 

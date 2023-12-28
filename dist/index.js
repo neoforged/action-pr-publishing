@@ -50540,7 +50540,7 @@ async function runPR(octo, pr, headSha, runId) {
             if (file.name.endsWith('maven-metadata.xml')) {
                 const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).metadata;
                 // Skip the snapshot metadata from being considered as a "version" metadata
-                if (metadata.versioning.snapshot.timestamp) {
+                if (metadata.versioning?.snapshot?.timestamp) {
                     continue;
                 }
                 // Use the path as the artifact name and group just in case
