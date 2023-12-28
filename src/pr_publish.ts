@@ -391,7 +391,9 @@ async function generateMDK(
   ] = `// PR repository \n${repoBlock}\ndependencies {`
   zip.file('build.gradle', buildGradle.join('\n'))
 
-  const path = `${artifact.group}/${artifact.name}/${artifact.version}/mdk-pr${prNumber}.zip`
+  const path = `${artifact.group.replace('.', '/')}/${artifact.name}/${
+    artifact.version
+  }/mdk-pr${prNumber}.zip`
   await uploader(
     path,
     await zip.generateAsync({

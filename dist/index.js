@@ -50692,7 +50692,7 @@ async function generateMDK(uploader, prNumber, artifact, repoBlock) {
     const buildGradle = (await zip.file('build.gradle').async('string')).split(new RegExp('\r\n|\n'));
     buildGradle[buildGradle.indexOf('dependencies {')] = `// PR repository \n${repoBlock}\ndependencies {`;
     zip.file('build.gradle', buildGradle.join('\n'));
-    const path = `${artifact.group}/${artifact.name}/${artifact.version}/mdk-pr${prNumber}.zip`;
+    const path = `${artifact.group.replace('.', '/')}/${artifact.name}/${artifact.version}/mdk-pr${prNumber}.zip`;
     await uploader(path, await zip.generateAsync({
         type: 'arraybuffer'
     }));
