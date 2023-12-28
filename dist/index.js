@@ -50539,6 +50539,10 @@ async function runPR(octo, pr, headSha, runId) {
             }
             if (file.name.endsWith('maven-metadata.xml')) {
                 const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).metadata;
+                // Skip the snapshot metadata from being considered as a "version" metadata
+                if (metadata.versioning.snapshot.timestamp) {
+                    continue;
+                }
                 // Use the path as the artifact name and group just in case
                 const split = file.name.split('/');
                 split.pop();
@@ -50585,11 +50589,6 @@ async function runPR(octo, pr, headSha, runId) {
         console.log();
         console.log(`Published artifacts:`);
         artifacts.forEach(art => console.log(`\t${art.group}:${art.name}:${art.version}`));
-        // Delete the artifact so that we don't try to re-publish in the future
-        await octo.rest.actions.deleteArtifact({
-            ...github_1.context.repo,
-            artifact_id: artifact.id
-        });
         let { comment, repoBlock, firstPublishUrl } = await generateComment(octo, prNumber, artifacts);
         // Step 4
         if (github_1.context.repo.repo.toLowerCase() == 'neoforge') {
@@ -50633,6 +50632,11 @@ ${oldComment}
             body: comment
         });
         await check.succeed(firstPublishUrl, oldComment, artifacts);
+        // Delete the artifact so that we don't try to re-publish in the future
+        await octo.rest.actions.deleteArtifact({
+            ...github_1.context.repo,
+            artifact_id: artifact.id
+        });
     }
     catch (error) {
         // Fail the workflow run if an error occurs

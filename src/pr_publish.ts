@@ -172,6 +172,11 @@ export async function runPR(
           await file.async('string')
         ).metadata
 
+        // Skip the snapshot metadata from being considered as a "version" metadata
+        if (metadata.versioning.snapshot.timestamp) {
+          continue
+        }
+
         // Use the path as the artifact name and group just in case
         const split = file.name.split('/')
         split.pop()
@@ -231,12 +236,6 @@ export async function runPR(
       console.log(`\t${art.group}:${art.name}:${art.version}`)
     )
 
-    // Delete the artifact so that we don't try to re-publish in the future
-    await octo.rest.actions.deleteArtifact({
-      ...context.repo,
-      artifact_id: artifact.id
-    })
-
     let { comment, repoBlock, firstPublishUrl } = await generateComment(
       octo,
       prNumber,
@@ -295,6 +294,12 @@ ${oldComment}
     })
 
     await check.succeed(firstPublishUrl, oldComment, artifacts)
+
+    // Delete the artifact so that we don't try to re-publish in the future
+    await octo.rest.actions.deleteArtifact({
+      ...context.repo,
+      artifact_id: artifact.id
+    })
   } catch (error) {
     // Fail the workflow run if an error occurs
     if (error instanceof Error) {
