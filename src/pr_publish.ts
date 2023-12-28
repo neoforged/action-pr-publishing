@@ -27,6 +27,13 @@ export async function runFromWorkflow(): Promise<void> {
     return
   }
 
+  if (workflow_run.event != 'pull_request') {
+    console.log(
+      `Aborting, only events of type 'pull_request' can trigger publishing`
+    )
+    return
+  }
+
   if (!workflow_run.head_branch) {
     console.log(`Unknown head branch...`)
     return
@@ -478,6 +485,7 @@ interface WorkflowRun {
     }
   }
   head_sha: string
+  event: string
 }
 
 export interface PublishedArtifact {
