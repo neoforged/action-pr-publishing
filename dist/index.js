@@ -50713,17 +50713,19 @@ async function generateMDK(uploader, prNumber, artifact, repoBlock) {
         type: 'arraybuffer'
     }));
     console.log(`Generated and uploaded MDK`);
+    const mdkUrl = `${(0, core_1.getInput)('base-maven-url')}/${github_1.context.repo.repo}/pr${prNumber}/${path}`;
     return `
 ### MDK installation
 In order to setup a MDK using the latest PR version, run the following commands in a terminal.  
 The script works on both *nix and Windows as long as you have the JDK \`bin\` folder on the path.  
-The script will clone the MDK in a folder named \`${github_1.context.repo.repo}-pr${prNumber}\`.
+The script will clone the MDK in a folder named \`${github_1.context.repo.repo}-pr${prNumber}\`.  
+On Powershell you will need to remove the \`-L\` flag from the \`curl\` invocation.
 \`\`\`sh
 mkdir ${github_1.context.repo.repo}-pr${prNumber}
 cd ${github_1.context.repo.repo}-pr${prNumber}
-curl -L ${(0, core_1.getInput)('base-maven-url')}/${github_1.context.repo.repo}/pr${prNumber}/${path} -o mdk.zip
+curl -L ${mdkUrl} -o mdk.zip
 jar xf mdk.zip
-rm mdk.zip
+rm mdk.zip || del mdk.zip
 \`\`\`
 
 To test a production environment, you can download the installer from [here](${(0, core_1.getInput)('base-maven-url')}/${github_1.context.repo.repo}/pr${prNumber}/${artifact.group}/${artifact.name}/${artifact.version}/${artifact.name}-${artifact.version}-installer.jar).`;

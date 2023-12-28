@@ -421,21 +421,24 @@ async function generateMDK(
 
   console.log(`Generated and uploaded MDK`)
 
+  const mdkUrl = `${getInput('base-maven-url')}/${
+    context.repo.repo
+  }/pr${prNumber}/${path}`
+
   return `
 ### MDK installation
 In order to setup a MDK using the latest PR version, run the following commands in a terminal.  
 The script works on both *nix and Windows as long as you have the JDK \`bin\` folder on the path.  
 The script will clone the MDK in a folder named \`${
     context.repo.repo
-  }-pr${prNumber}\`.
+  }-pr${prNumber}\`.  
+On Powershell you will need to remove the \`-L\` flag from the \`curl\` invocation.
 \`\`\`sh
 mkdir ${context.repo.repo}-pr${prNumber}
 cd ${context.repo.repo}-pr${prNumber}
-curl -L ${getInput('base-maven-url')}/${
-    context.repo.repo
-  }/pr${prNumber}/${path} -o mdk.zip
+curl -L ${mdkUrl} -o mdk.zip
 jar xf mdk.zip
-rm mdk.zip
+rm mdk.zip || del mdk.zip
 \`\`\`
 
 To test a production environment, you can download the installer from [here](${getInput(
