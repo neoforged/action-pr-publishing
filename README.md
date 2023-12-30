@@ -28,7 +28,6 @@ The actions in this step:
 3. Upload the (filtered) contents of the artifact to a GitHub sub-package of the repository, that has the `pr<number>.` prefix; delete the workflow artifact so that in the future re-publishing is not attempted;
 4. **OPTIONAL STEP**, only if the repository's name is `NeoForge`: generate an MDK pointing to the published version of the PR (more information on mdk generation [below](#mdk-generation));
 5. Comment on the PR with information on the published artifacts (and an MDK link and installer link if necessary), or update an existing comment;
-6. Comment on the commit with the same message as above.
 
 ## MDK Generation
 If the name of the repository this action runs on is `NeoForge` (case insensitive), the action will generate an MDK.  

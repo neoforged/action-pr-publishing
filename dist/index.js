@@ -50625,13 +50625,6 @@ ${oldComment}
                 body: comment
             });
         }
-        // Step 6
-        // People didn't like the commit comment because it caused notification spam so it's disabled for now
-        /* await octo.rest.repos.createCommitComment({
-          ...context.repo,
-          commit_sha: headSha,
-          body: comment
-        }) */
         await check.succeed(firstPublishUrl, oldComment, artifacts);
         // Delete the artifact so that we don't try to re-publish in the future
         await octo.rest.actions.deleteArtifact({
@@ -50817,7 +50810,9 @@ async function createInitialComment(octo, pr) {
         .createComment({
         ...github_1.context.repo,
         issue_number: pr.number,
-        body: `- [${(await (0, utils_1.isAuthorMaintainer)(octo, pr)) ? 'X' : ' '}] ${pr_publish_1.shouldPublishCheckBox}`
+        body: `- [${(await (0, utils_1.isAuthorMaintainer)(octo, pr)) && !pr.user.login.endsWith('-l10n')
+            ? 'X'
+            : ' '}] ${pr_publish_1.shouldPublishCheckBox}`
     })
         .then(res => res.data);
 }

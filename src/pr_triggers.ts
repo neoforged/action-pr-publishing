@@ -69,7 +69,9 @@ export async function createInitialComment(
       ...context.repo,
       issue_number: pr.number,
       body: `- [${
-        (await isAuthorMaintainer(octo, pr)) ? 'X' : ' '
+        (await isAuthorMaintainer(octo, pr)) && !pr.user.login.endsWith('-l10n')
+          ? 'X'
+          : ' '
       }] ${shouldPublishCheckBox}`
     })
     .then(res => res.data)

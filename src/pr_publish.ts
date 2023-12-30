@@ -286,14 +286,6 @@ ${oldComment}
       })
     }
 
-    // Step 6
-    // People didn't like the commit comment because it caused notification spam so it's disabled for now
-    /* await octo.rest.repos.createCommitComment({
-      ...context.repo,
-      commit_sha: headSha,
-      body: comment
-    }) */
-
     await check.succeed(firstPublishUrl, oldComment, artifacts)
 
     // Delete the artifact so that we don't try to re-publish in the future
