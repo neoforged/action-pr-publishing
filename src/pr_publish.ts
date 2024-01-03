@@ -2,7 +2,7 @@ import * as core from '@actions/core'
 import { context } from '@actions/github'
 import { GitHub } from '@actions/github/lib/utils'
 import axios, { AxiosRequestConfig } from 'axios'
-import JSZip from 'jszip'
+import JSZip, { JSZipObject } from 'jszip'
 import * as process from 'process'
 import { getInput } from '@actions/core'
 import { XMLParser } from 'fast-xml-parser'
@@ -11,6 +11,7 @@ import { PullRequest } from './types'
 import { CheckRun } from './check_runs'
 import { createInitialComment } from './pr_triggers'
 import { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods/dist-types/generated/parameters-and-response-types'
+import * as async from 'async'
 
 // 50mb
 const artifactLimit = 50 * 1000000
@@ -184,80 +185,91 @@ export async function runPR(
       })
     }
 
-    let uploadAmount = 0
-    for (const file of toUpload) {
+    const uploadFile = async (file: JSZipObject) => {
       try {
         console.debug(`Uploading ${file.name}`)
         await uploader(file.name, await file.async('arraybuffer'))
         console.debug(`Uploaded ${file.name}`)
-        uploadAmount++
       } catch (err) {
         console.error(`Failed to upload file ${file.name}: ${err}`)
         throw err
       }
-
-      if (file.name.endsWith('maven-metadata.xml')) {
-        const metadata = new XMLParser().parse(
-          await file.async('string')
-        ).metadata
-
-        // Skip the snapshot metadata from being considered as a "version" metadata
-        if (metadata.versioning?.snapshot?.timestamp) {
-          continue
-        }
-
-        // Use the path as the artifact name and group just in case
-        const split = file.name.split('/')
-        split.pop()
-        const name = split.pop()
-        const artifact: PublishedArtifact = {
-          group: split.join('.'),
-          name: name!,
-          version: metadata.versioning.latest
-        }
-        artifacts.push(artifact)
-
-        const packageName = getPackageName(prNumber, artifact)
-        const alreadyPublished: RestEndpointMethodTypes['packages']['getAllPackageVersionsForPackageOwnedByOrg']['response']['data'] =
-          await octo.rest.packages
-            .getAllPackageVersionsForPackageOwnedByOrg({
-              org: context.repo.owner,
-              package_type: 'maven',
-              package_name: packageName
-            })
-            .then(e => e.data)
-            .catch(_ => [])
-
-        const existingPackage = alreadyPublished.find(
-          val => val.name == artifact.version
-        )
-        if (existingPackage) {
-          // If we only published one artifact in the past we have to delete the whole package
-          if (alreadyPublished.length == 1) {
-            console.warn(`Deleting existing package '${packageName}'`)
-
-            await octo.rest.packages.deletePackageForOrg({
-              org: context.repo.owner,
-              package_type: 'maven',
-              package_name: packageName
-            })
-          } else {
-            console.warn(
-              `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
-            )
-
-            await octo.rest.packages.deletePackageVersionForOrg({
-              org: context.repo.owner,
-              package_type: 'maven',
-              package_name: packageName,
-              package_version_id: existingPackage.id
-            })
-          }
-        }
-      }
     }
 
-    console.log(`Finished uploading ${uploadAmount} items`)
+    // Upload metadata first
+    const metadatas = toUpload.filter(file =>
+      file.name.endsWith('maven-metadata.xml')
+    )
+    await async.forEachOf(metadatas, async file => {
+      await uploadFile(file)
+
+      const metadata = new XMLParser().parse(
+        await file.async('string')
+      ).metadata
+
+      // Skip the snapshot metadata from being considered as a "version" metadata
+      if (metadata.versioning?.snapshot?.timestamp) {
+        return
+      }
+
+      // Use the path as the artifact name and group just in case
+      const split = file.name.split('/')
+      split.pop()
+      const name = split.pop()
+      const artifact: PublishedArtifact = {
+        group: split.join('.'),
+        name: name!,
+        version: metadata.versioning.latest
+      }
+      artifacts.push(artifact)
+
+      const packageName = getPackageName(prNumber, artifact)
+      const alreadyPublished: RestEndpointMethodTypes['packages']['getAllPackageVersionsForPackageOwnedByOrg']['response']['data'] =
+        await octo.rest.packages
+          .getAllPackageVersionsForPackageOwnedByOrg({
+            org: context.repo.owner,
+            package_type: 'maven',
+            package_name: packageName
+          })
+          .then(e => e.data)
+          .catch(_ => [])
+
+      const existingPackage = alreadyPublished.find(
+        val => val.name == artifact.version
+      )
+      if (existingPackage) {
+        // If we only published one artifact in the past we have to delete the whole package
+        if (alreadyPublished.length == 1) {
+          console.warn(`Deleting existing package '${packageName}'`)
+
+          await octo.rest.packages.deletePackageForOrg({
+            org: context.repo.owner,
+            package_type: 'maven',
+            package_name: packageName
+          })
+        } else {
+          console.warn(
+            `Deleting existing package version '${existingPackage.name}', ID: ${existingPackage.id}`
+          )
+
+          await octo.rest.packages.deletePackageVersionForOrg({
+            org: context.repo.owner,
+            package_type: 'maven',
+            package_name: packageName,
+            package_version_id: existingPackage.id
+          })
+        }
+      }
+    })
+
+    await async.forEachOf(
+      toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')),
+      async item => {
+        await uploadFile(item)
+      }
+    )
+
+    console.log(`Finished uploading ${toUpload.length} items`)
     console.log()
 
     console.log(`Published artifacts:`)
