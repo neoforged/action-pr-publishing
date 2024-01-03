@@ -42,34 +42,63 @@ export async function runFromWorkflow(): Promise<void> {
   console.log(
     `Workflow run head branch: ${workflow_run.head_branch} and repository owner: ${workflow_run.head_repository.owner.login}`
   )
-  const possiblePrs = await octo.rest.pulls
-    .list({
-      ...context.repo,
-      head:
-        workflow_run.head_repository.owner.login +
-        ':' +
-        workflow_run.head_branch,
-      state: 'open',
-      sort: 'long-running'
-    })
-    .then(d => d.data)
-  if (possiblePrs.length < 1) {
-    console.log(`No open PR associated...`)
+  const linked = await getLinkedPR(
+    octo,
+    workflow_run.head_repository,
+    workflow_run.head_branch
+  )
+  if (!linked) {
+    console.log(`No open PR associated found...`)
     return
   }
-  const pr = possiblePrs[0]
 
   await runPR(
     octo,
     await octo.rest.pulls
       .get({
         ...context.repo,
-        pull_number: pr.number
+        pull_number: linked
       })
       .then(d => d.data),
     workflow_run.head_sha,
     workflow_run.id
   )
+}
+
+async function getLinkedPR(
+  octo: InstanceType<typeof GitHub>,
+  repo: Repository,
+  head: string
+): Promise<number | undefined> {
+  const headLabel = repo.owner.login + ':' + head
+  if (repo.name != context.repo.repo) {
+    for await (const prs of octo.paginate.iterator(octo.rest.pulls.list, {
+      ...context.repo,
+      state: 'open',
+      per_page: 100
+    })) {
+      const pr = prs.data.find(p => p.head.label == headLabel)
+      if (pr) {
+        return pr.number
+      }
+      return undefined
+    }
+  } else {
+    // This is the ideal and efficient solution, but it only works if the base and head repo names are identical
+    const possiblePrs = await octo.rest.pulls
+      .list({
+        ...context.repo,
+        head: headLabel,
+        state: 'open',
+        sort: 'long-running'
+      })
+      .then(d => d.data)
+    if (possiblePrs.length < 1) {
+      console.log(`No open PR associated...`)
+      return undefined
+    }
+    return possiblePrs[0].number
+  }
 }
 
 export async function runPR(
@@ -495,13 +524,16 @@ interface WorkflowRun {
   pull_requests: {
     number: number
   }[]
-  head_repository: {
-    owner: {
-      login: string
-    }
-  }
+  head_repository: Repository
   head_sha: string
   event: string
+}
+
+interface Repository {
+  owner: {
+    login: string
+  }
+  name: string
 }
 
 export interface PublishedArtifact {
