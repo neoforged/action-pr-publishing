@@ -56677,7 +56677,7 @@ async function runPR(octo, pr, headSha, runId) {
                 }
             }
         });
-        await async.forEachOfLimit(toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')), 5, async (item) => {
+        await async.forEachOfLimit(toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')), 4, async (item) => {
             await uploadFile(item);
         });
         console.log(`Finished uploading ${toUpload.length} items`);

@@ -264,7 +264,7 @@ export async function runPR(
 
     await async.forEachOfLimit(
       toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')),
-      5,
+      4,
       async item => {
         await uploadFile(item)
       }
