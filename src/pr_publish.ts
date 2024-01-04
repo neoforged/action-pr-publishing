@@ -112,7 +112,8 @@ export async function runPR(
   // Retry requests thrice
   axiosRetry(axios, {
     retries: 3,
-    retryDelay: retryCount => retryCount * 1000
+    retryDelay: retryCount => retryCount * 2000,
+    retryCondition: error => error.response?.status == 500
   })
   const check = new CheckRun(octo, pr)
 

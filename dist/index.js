@@ -56611,7 +56611,8 @@ async function runPR(octo, pr, headSha, runId) {
     // Retry requests thrice
     (0, axios_retry_1.default)(axios_1.default, {
         retries: 3,
-        retryDelay: retryCount => retryCount * 1000
+        retryDelay: retryCount => retryCount * 2000,
+        retryCondition: error => error.response?.status == 500
     });
     const check = new check_runs_1.CheckRun(octo, pr);
     try {
