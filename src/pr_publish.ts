@@ -12,6 +12,7 @@ import { CheckRun } from './check_runs'
 import { createInitialComment } from './pr_triggers'
 import { RestEndpointMethodTypes } from '@octokit/plugin-rest-endpoint-methods/dist-types/generated/parameters-and-response-types'
 import * as async from 'async'
+import axiosRetry from 'axios-retry'
 
 // 50mb
 const artifactLimit = 50 * 1000000
@@ -108,6 +109,11 @@ export async function runPR(
   headSha: string,
   runId: number
 ) {
+  // Retry requests thrice
+  axiosRetry(axios, {
+    retries: 3,
+    retryDelay: retryCount => retryCount * 1000
+  })
   const check = new CheckRun(octo, pr)
 
   try {
@@ -264,7 +270,7 @@ export async function runPR(
 
     await async.forEachOfLimit(
       toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')),
-      4,
+      5,
       async item => {
         await uploadFile(item)
       }
