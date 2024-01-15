@@ -56677,6 +56677,10 @@ async function runPR(octo, pr, headSha, runId) {
                 console.debug(`Uploaded ${file.name}`);
             }
             catch (err) {
+                if (err.response?.status === 409) {
+                    // 3 retries, maybe one of them succeeded but didn't reply with 200... just ignore it
+                    return;
+                }
                 console.error(`Failed to upload file ${file.name}: ${err}`);
                 throw err;
             }

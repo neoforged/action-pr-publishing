@@ -198,6 +198,11 @@ export async function runPR(
         await uploader(file.name, await file.async('arraybuffer'))
         console.debug(`Uploaded ${file.name}`)
       } catch (err) {
+        if ((err as any).response?.status === 409) {
+          // 3 retries, maybe one of them succeeded but didn't reply with 200... just ignore it
+          return
+        }
+
         console.error(`Failed to upload file ${file.name}: ${err}`)
         throw err
       }
