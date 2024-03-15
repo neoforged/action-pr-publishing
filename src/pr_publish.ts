@@ -175,9 +175,9 @@ export async function runPR(
     const zip = await JSZip.loadAsync(response.data)
 
     // Step 3
-    const filter = getInput('artifacts-base-path')
+    const filters = getInput('artifacts-base-path').split('|')
     const toUpload = zip.filter((_relativePath, file) => {
-      return !file.dir && file.name.startsWith(filter)
+      return !file.dir && filters.some(filter => file.name.startsWith(filter))
     })
 
     const artifacts: PublishedArtifact[] = []

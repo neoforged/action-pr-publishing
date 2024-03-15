@@ -56656,9 +56656,9 @@ async function runPR(octo, pr, headSha, runId) {
         });
         const zip = await jszip_1.default.loadAsync(response.data);
         // Step 3
-        const filter = (0, core_1.getInput)('artifacts-base-path');
+        const filters = (0, core_1.getInput)('artifacts-base-path').split('|');
         const toUpload = zip.filter((_relativePath, file) => {
-            return !file.dir && file.name.startsWith(filter);
+            return !file.dir && filters.some(filter => file.name.startsWith(filter));
         });
         const artifacts = [];
         const basePath = `https://maven.pkg.github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/pr${prNumber}/`;
