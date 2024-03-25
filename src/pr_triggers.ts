@@ -42,7 +42,10 @@ export async function runFromTrigger() {
       })
       .then(d => d.data)
     const prWorkflows = await getRunsOfPR(octo, pr.head.sha)
-    const runName = getInput('uploader-workflow-name')
+    const runName = getInput('uploader-workflow-name').replace(
+      '$pr',
+      pr.number.toString()
+    )
     const run = prWorkflows.find(flow => flow.name == runName)
     if (!run) {
       console.log(`No run with name ${runName} found on PR #${pr.number}`)
