@@ -417,17 +417,11 @@ async function generateMDK(
   const config = {
     responseType: 'arraybuffer'
   } as AxiosRequestConfig
-  let response = await axios
-    .get(`https://github.com/neoforged/mdk/zipball/${mcVersion}`, config)
-    .catch(_ =>
-      axios.get('https://github.com/neoforged/mdk/zipball/main', config)
-    )
-  if (response.status != 200) {
-    response = await axios.get(
-      'https://github.com/neoforged/mdk/zipball/main',
-      config
-    )
-  }
+  const response = await attemptToFindMDK(
+    parseInt(versions[0]),
+    parseInt(versions[1]),
+    config
+  )
 
   let zip = await JSZip.loadAsync(response.data)
   // Find first root folder
@@ -569,4 +563,38 @@ export interface PublishedArtifact {
 
 function getPackageName(prNumber: number, artifact: PublishedArtifact) {
   return `pr${prNumber}.${artifact.group}.${artifact.name}`
+}
+
+async function attemptToFindMDK(
+  mcMajor: number,
+  mcMinor: number,
+  config: AxiosRequestConfig,
+  mdg: boolean = true
+): Promise<axios.AxiosResponse> {
+  const fallback = async () => {
+    // We first try MDG, now let's try NG
+    if (mdg) {
+      return attemptToFindMDK(mcMajor, mcMinor, config, false)
+    }
+
+    // If we've tried everything for this major, try the .0 version of the closest major
+    if (mcMinor < 0) {
+      return attemptToFindMDK(mcMajor - 1, 0, config)
+    }
+    // First try to find a MDK for the closest minor of the same major version
+    // Since 1.21.0 and 1.21 are technically the same, the case when the MDK branch isn't suffixed by a .0 is caught by the minor being -1
+    return attemptToFindMDK(mcMajor, mcMinor - 1, config)
+  }
+  const response = await axios
+    .get(
+      `https://github.com/neoforged/mdk/zipball/1.${mcMajor}${
+        mcMinor == -1 ? '' : '.' + mcMinor
+      }${mdg ? '-mdg' : ''}`,
+      config
+    )
+    .catch(_ => fallback())
+  if (response.status != 200) {
+    return fallback()
+  }
+  return response
 }
