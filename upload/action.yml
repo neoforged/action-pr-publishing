@@ -17,11 +17,14 @@ runs:
       shell: bash
       run: |
         echo "path=$(echo $GITHUB_ACTION_PATH)/init.gradle" >> $GITHUB_OUTPUT
-    - uses: gradle/gradle-build-action@v2
-      name: Publish with Gradle to directory
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
       with:
-        arguments: ${{ inputs.publishing-task }} --init-script ${{ steps.initscriptpath.outputs.path }}
-    - uses: actions/upload-artifact@v3
+        cache-read-only: false
+    - name: Publish with Gradle to directory
+      run: ./gradlew ${{ inputs.publishing-task }} --init-script ${{ steps.initscriptpath.outputs.path }}
+      shell: bash
+    - uses: actions/upload-artifact@v4
       name: Upload maven directory
       with:
         name: maven-publish
