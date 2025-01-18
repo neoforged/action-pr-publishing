@@ -56685,23 +56685,20 @@ async function runPR(octo, pr, headSha, runId) {
                 throw err;
             }
         };
-        // Upload metadata first
-        const metadatas = toUpload.filter(file => file.name.endsWith('maven-metadata.xml'));
+        // Upload pom metadata first
+        const metadatas = toUpload.filter(file => file.name.endsWith('.pom'));
         await async.forEachOf(metadatas, async (file) => {
             await uploadFile(file);
-            const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).metadata;
-            // Skip the snapshot metadata from being considered as a "version" metadata
-            if (metadata.versioning?.snapshot?.timestamp) {
-                return;
-            }
+            const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).project;
             // Use the path as the artifact name and group just in case
             const split = file.name.split('/');
             split.pop();
+            split.pop(); // Pop this file and the version folder
             const name = split.pop();
             const artifact = {
                 group: split.join('.'),
                 name: name,
-                version: metadata.versioning.latest
+                version: metadata.version
             };
             artifacts.push(artifact);
             const packageName = getPackageName(prNumber, artifact);
@@ -56735,7 +56732,7 @@ async function runPR(octo, pr, headSha, runId) {
                 }
             }
         });
-        await async.forEachOfLimit(toUpload.filter(file => !file.name.endsWith('maven-metadata.xml')), 5, async (item) => {
+        await async.forEachOfLimit(toUpload.filter(file => !file.name.endsWith('.pom')), 5, async (item) => {
             await uploadFile(item);
         });
         console.log(`Finished uploading ${toUpload.length} items`);
