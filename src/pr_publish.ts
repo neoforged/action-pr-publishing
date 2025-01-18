@@ -209,21 +209,16 @@ export async function runPR(
     }
 
     // Upload pom metadata first
-    const metadatas = toUpload.filter(file => file.name.endsWith('.pom'))
-    await async.forEachOf(metadatas, async file => {
+    const poms = toUpload.filter(file => file.name.endsWith('.pom'))
+    await async.forEachOf(poms, async file => {
       await uploadFile(file)
 
-      const metadata = new XMLParser().parse(await file.async('string')).project
+      const pom = new XMLParser().parse(await file.async('string')).project
 
-      // Use the path as the artifact name and group just in case
-      const split = file.name.split('/')
-      split.pop()
-      split.pop() // Pop this file and the version folder
-      const name = split.pop()
       const artifact: PublishedArtifact = {
-        group: split.join('.'),
-        name: name!,
-        version: metadata.version
+        group: pom.groupId!,
+        name: pom.artifactId!,
+        version: pom.version!
       }
       artifacts.push(artifact)
 
@@ -368,15 +363,19 @@ async function generateComment(
       package_name: getPackageName(prNumber, artifactName)
     })
 
-    comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`
+    comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${
+      artifactName.version
+    }\`](${artifact.data.html_url + '?version=' + artifactName.version})`
     if (!firstPublishUrl) {
       firstPublishUrl = artifact.data.html_url
     }
   }
   comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`
-  const includeModules = artifacts
-    .map(art => `includeModule('${art.group}', '${art.name}')`)
-    .map(a => `            ${a}`) // Indent
+  const includeModules = unique(
+    artifacts
+      .map(art => `includeModule('${art.group}', '${art.name}')`)
+      .map(a => `            ${a}`)
+  ) // Indent
     .join('\n')
   const repoBlock = `repositories {
     maven {
@@ -589,4 +588,16 @@ async function attemptToFindMDK(
     return fallback()
   }
   return response
+}
+
+function unique<T>(arr: T[]): T[] {
+  const array: T[] = []
+
+  arr.forEach(el => {
+    if (!array.includes(el)) {
+      array.push(el)
+    }
+  })
+
+  return array
 }

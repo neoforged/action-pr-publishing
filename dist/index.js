@@ -56686,19 +56686,14 @@ async function runPR(octo, pr, headSha, runId) {
             }
         };
         // Upload pom metadata first
-        const metadatas = toUpload.filter(file => file.name.endsWith('.pom'));
-        await async.forEachOf(metadatas, async (file) => {
+        const poms = toUpload.filter(file => file.name.endsWith('.pom'));
+        await async.forEachOf(poms, async (file) => {
             await uploadFile(file);
-            const metadata = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).project;
-            // Use the path as the artifact name and group just in case
-            const split = file.name.split('/');
-            split.pop();
-            split.pop(); // Pop this file and the version folder
-            const name = split.pop();
+            const pom = new fast_xml_parser_1.XMLParser().parse(await file.async('string')).project;
             const artifact = {
-                group: split.join('.'),
-                name: name,
-                version: metadata.version
+                group: pom.groupId,
+                name: pom.artifactId,
+                version: pom.version
             };
             artifacts.push(artifact);
             const packageName = getPackageName(prNumber, artifact);
@@ -56802,15 +56797,15 @@ async function generateComment(octo, prNumber, artifacts) {
             package_type: 'maven',
             package_name: getPackageName(prNumber, artifactName)
         });
-        comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url})`;
+        comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${artifactName.version}\`](${artifact.data.html_url + '?version=' + artifactName.version})`;
         if (!firstPublishUrl) {
             firstPublishUrl = artifact.data.html_url;
         }
     }
     comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`;
-    const includeModules = artifacts
+    const includeModules = unique(artifacts
         .map(art => `includeModule('${art.group}', '${art.name}')`)
-        .map(a => `            ${a}`) // Indent
+        .map(a => `            ${a}`)) // Indent
         .join('\n');
     const repoBlock = `repositories {
     maven {
@@ -56918,6 +56913,15 @@ async function attemptToFindMDK(mcMajor, mcMinor, config, mdg = true) {
         return fallback();
     }
     return response;
+}
+function unique(arr) {
+    const array = [];
+    arr.forEach(el => {
+        if (!array.includes(el)) {
+            array.push(el);
+        }
+    });
+    return array;
 }
 
 
