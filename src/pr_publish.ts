@@ -208,11 +208,9 @@ export async function runPR(
       }
     }
 
-    // Upload pom metadata first
+    // Read pom metadata first and delete versions that are about to be overwritten
     const poms = toUpload.filter(file => file.name.endsWith('.pom'))
     await async.forEachOf(poms, async file => {
-      await uploadFile(file)
-
       const pom = new XMLParser().parse(await file.async('string')).project
 
       const artifact: PublishedArtifact = {
@@ -261,13 +259,9 @@ export async function runPR(
       }
     })
 
-    await async.forEachOfLimit(
-      toUpload.filter(file => !file.name.endsWith('.pom')),
-      5,
-      async item => {
-        await uploadFile(item)
-      }
-    )
+    await async.forEachOfLimit(toUpload, 5, async item => {
+      await uploadFile(item)
+    })
 
     console.log(`Finished uploading ${toUpload.length} items`)
     console.log()
