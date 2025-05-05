@@ -71,11 +71,12 @@ export async function createInitialComment(
     .createComment({
       ...context.repo,
       issue_number: pr.number,
-      body: `- [${
-        (await isAuthorMaintainer(octo, pr)) && !pr.user.login.endsWith('-l10n')
-          ? 'X'
-          : ' '
-      }] ${shouldPublishCheckBox}`
+      body: `- [ ] ${shouldPublishCheckBox}` // PR publishing is always disabled by default, at least for now, to avoid too many unused artifacts
+      // body: `- [${
+      //   (await isAuthorMaintainer(octo, pr)) && !pr.user.login.endsWith('-l10n')
+      //     ? 'X'
+      //     : ' '
+      // }] ${shouldPublishCheckBox}`
     })
     .then(res => res.data)
 }
