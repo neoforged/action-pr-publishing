@@ -399,6 +399,8 @@ async function generateMDK(
   const versions = artifact.version.split('.')
   const mcVersion = `1.${versions[0]}.${versions[1]}`
 
+  console.log(`Generating MDK for version ${mcVersion}`)
+
   const config = {
     responseType: 'arraybuffer'
   } as AxiosRequestConfig
@@ -570,11 +572,12 @@ async function attemptToFindMDK(
     // Since 1.21.0 and 1.21 are technically the same, the case when the MDK branch isn't suffixed by a .0 is caught by the minor being -1
     return attemptToFindMDK(mcMajor, mcMinor - 1, config)
   }
+  const version = `1.${mcMajor}${mcMinor == -1 ? '' : '.' + mcMinor}`
   const response = await axios
     .get(
-      `https://github.com/neoforged/mdk/zipball/1.${mcMajor}${
-        mcMinor == -1 ? '' : '.' + mcMinor
-      }${mdg ? '-mdg' : ''}`,
+      `https://github.com/neoforgemdks/mdk-${version}-${
+        mdg ? 'moddevgradle' : 'neogradle'
+      }/zipball/main`,
       config
     )
     .catch(_ => fallback())
