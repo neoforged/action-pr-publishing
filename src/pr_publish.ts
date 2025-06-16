@@ -351,11 +351,23 @@ async function generateComment(
   let comment = `### The artifacts published by this PR:  `
   let firstPublishUrl: string | undefined = undefined
   for (const artifactName of artifacts) {
-    const artifact = await octo.rest.packages.getPackageForOrganization({
-      org: context.repo.owner,
-      package_type: 'maven',
-      package_name: getPackageName(prNumber, artifactName)
+    const { data } = await octo.rest.users.getByUsername({
+      username: context.repo.owner
     })
+    let artifact: any
+    if (data.type === 'Organization') {
+      artifact = await octo.rest.packages.getPackageForOrganization({
+        org: context.repo.owner,
+        package_type: 'maven',
+        package_name: getPackageName(prNumber, artifactName)
+      })
+    } else {
+      artifact = await octo.rest.packages.getPackageForUser({
+        username: context.repo.owner,
+        package_type: 'maven',
+        package_name: getPackageName(prNumber, artifactName)
+      })
+    }
 
     comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${
       artifactName.version
