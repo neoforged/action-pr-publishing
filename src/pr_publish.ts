@@ -344,11 +344,17 @@ async function generateComment(
   let comment = `### The artifacts published by this PR:  `
   let firstPublishUrl: string | undefined = undefined
   for (const artifactName of artifacts) {
-    const artifact = await octo.rest.packages.getPackageForOrganization({
-      org: context.repo.owner,
-      package_type: 'maven',
-      package_name: getPackageName(prNumber, artifactName)
-    })
+    const artifact = await (context.payload.repository?.owner?.type == 'User'
+      ? octo.rest.packages.getPackageForUser({
+          username: context.repo.owner,
+          package_type: 'maven',
+          package_name: getPackageName(prNumber, artifactName)
+        })
+      : octo.rest.packages.getPackageForOrganization({
+          org: context.repo.owner,
+          package_type: 'maven',
+          package_name: getPackageName(prNumber, artifactName)
+        }))
 
     comment += `\n- :package: [\`${artifactName.group}:${artifactName.name}:${
       artifactName.version
@@ -360,16 +366,18 @@ async function generateComment(
   comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`
   const includeModules = unique(
     artifacts
-      .map(art => `includeModule('${art.group}', '${art.name}')`)
+      .map(art => `includeModule("${art.group}", "${art.name}")`)
       .map(a => `            ${a}`)
   ) // Indent
     .join('\n')
   const repoBlock = `repositories {
     maven {
-        name 'Maven for PR #${prNumber}' // https://github.com/${
+        name = "Maven for PR #${prNumber}" // https://github.com/${
           context.repo.owner
         }/${context.repo.repo}/pull/${prNumber}
-        url '${getInput('base-maven-url')}/${context.repo.repo}/pr${prNumber}'
+        url = uri("${getInput('base-maven-url')}/${
+          context.repo.repo
+        }/pr${prNumber}")
         content {
 ${includeModules}
         }
