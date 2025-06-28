@@ -18,6 +18,10 @@ inputs:
   publishing-token:
     required: false
     description: 'The token to use for publishing'
+  checkbox:
+    required: false
+    default: 'true'
+    description: 'If set to false, all PRs made by users with write permissions to the repo will be published automatically, without being able to turn it off. PRs made by external contributors will not be published under any circumstance'
 
 runs:
   using: node20

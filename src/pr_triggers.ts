@@ -1,6 +1,6 @@
 import { getOcto, isAuthorMaintainer } from './utils'
 import { context } from '@actions/github'
-import { getInput } from '@actions/core'
+import { getBooleanInput, getInput } from '@actions/core'
 import { runPR, shouldPublishCheckBox } from './pr_publish'
 import { GitHub } from '@actions/github/lib/utils'
 import { PullRequest, WorkflowRun } from './types'
@@ -15,10 +15,13 @@ export async function runFromTrigger() {
     context.eventName == 'pull_request_target' &&
     context.payload.action == 'opened'
   ) {
-    await createInitialComment(
-      octo,
-      context.payload.pull_request! as PullRequest
-    )
+    if (getBooleanInput('checkbox')) {
+      // Only create the initial comment when the checkbox is enabled. Otherwise we don't need to create it this early
+      await createInitialComment(
+        octo,
+        context.payload.pull_request! as PullRequest
+      )
+    }
   } else if (
     context.eventName == 'issue_comment' &&
     context.payload.action == 'edited'

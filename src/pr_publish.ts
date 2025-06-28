@@ -4,7 +4,7 @@ import { GitHub } from '@actions/github/lib/utils'
 import axios, { AxiosRequestConfig } from 'axios'
 import JSZip, { JSZipObject } from 'jszip'
 import * as process from 'process'
-import { getInput } from '@actions/core'
+import { getBooleanInput, getInput } from '@actions/core'
 import { XMLParser } from 'fast-xml-parser'
 import { getOcto, isAuthorMaintainer } from './utils'
 import { PullRequest } from './types'
@@ -120,14 +120,28 @@ export async function runPR(
       getInput('publishing-token') ?? process.env['GITHUB_TOKEN']!
 
     let selfComment = await getSelfComment(octo, prNumber)
-    if (!selfComment) {
-      selfComment = await createInitialComment(octo, pr)
-    }
 
-    if (!(await shouldPublish(octo, pr, selfComment))) {
-      await check.skipped()
-      console.log(`PR is not published as checkbox is not ticked`)
-      return
+    const withCheckbox = core.getBooleanInput('checkbox')
+    if (withCheckbox) {
+      if (!selfComment) {
+        selfComment = await createInitialComment(octo, pr)
+      }
+
+      if (!(await shouldPublish(octo, pr, selfComment))) {
+        await check.skipped()
+        console.log(`PR is not published as checkbox is not ticked`)
+        return
+      }
+    } else {
+      if (!(await isAuthorMaintainer(octo, pr))) {
+        await check.skipped(
+          'Publishing skipped as PR author is not repository collaborator'
+        )
+        console.log(
+          'Skipping publishing as PR author does not have required permissions'
+        )
+        return
+      }
     }
 
     // Step 2
@@ -285,19 +299,21 @@ export async function runPR(
       }
     }
 
-    const oldComment = comment
+    const contentsComment = comment
     comment = `
-- [x] ${shouldPublishCheckBox}
-
 Last commit published: [${headSha}](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${headSha}).
 
 <details>
 
 <summary>PR Publishing</summary>
 
-${oldComment}
+${comment}
 
 </details>`
+
+    if (withCheckbox) {
+      comment = `- [x] ${shouldPublishCheckBox}\n\n${comment}`
+    }
 
     // Step 5
     if (selfComment) {
@@ -314,7 +330,7 @@ ${oldComment}
       })
     }
 
-    await check.succeed(firstPublishUrl, oldComment, artifacts)
+    await check.succeed(firstPublishUrl, contentsComment, artifacts)
 
     // Delete the artifact so that we don't try to re-publish in the future
     await octo.rest.actions.deleteArtifact({
@@ -342,7 +358,9 @@ async function generateComment(
   firstPublishUrl?: string
 }> {
   let comment = `### The artifacts published by this PR:  `
+
   let firstPublishUrl: string | undefined = undefined
+
   for (const artifactName of artifacts) {
     const artifact = await (context.payload.repository?.owner?.type == 'User'
       ? octo.rest.packages.getPackageForUser({

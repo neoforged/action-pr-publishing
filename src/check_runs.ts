@@ -25,14 +25,16 @@ export class CheckRun {
     ).data.id
   }
 
-  public async skipped() {
+  public async skipped(
+    reason: string = "Publishing skipped as the publishing checkbox wasn't ticked"
+  ) {
     await this.octo.rest.checks.update({
       ...context.repo,
       check_run_id: this.id,
       conclusion: 'skipped',
       output: {
         title: 'Publishing skipped',
-        summary: "Publishing skipped as the publishing checkbox wasn't ticked"
+        summary: reason
       }
     })
   }

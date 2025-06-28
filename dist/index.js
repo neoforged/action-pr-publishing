@@ -56429,14 +56429,14 @@ class CheckRun {
             details_url: (0, utils_1.getRunURL)()
         })).data.id;
     }
-    async skipped() {
+    async skipped(reason = "Publishing skipped as the publishing checkbox wasn't ticked") {
         await this.octo.rest.checks.update({
             ...github_1.context.repo,
             check_run_id: this.id,
             conclusion: 'skipped',
             output: {
                 title: 'Publishing skipped',
-                summary: "Publishing skipped as the publishing checkbox wasn't ticked"
+                summary: reason
             }
         });
     }
@@ -56617,13 +56617,23 @@ async function runPR(octo, pr, headSha, runId) {
         console.log(`PR number: ${prNumber}`);
         const publishingToken = (0, core_1.getInput)('publishing-token') ?? process.env['GITHUB_TOKEN'];
         let selfComment = await getSelfComment(octo, prNumber);
-        if (!selfComment) {
-            selfComment = await (0, pr_triggers_1.createInitialComment)(octo, pr);
+        const withCheckbox = core.getBooleanInput('checkbox');
+        if (withCheckbox) {
+            if (!selfComment) {
+                selfComment = await (0, pr_triggers_1.createInitialComment)(octo, pr);
+            }
+            if (!(await shouldPublish(octo, pr, selfComment))) {
+                await check.skipped();
+                console.log(`PR is not published as checkbox is not ticked`);
+                return;
+            }
         }
-        if (!(await shouldPublish(octo, pr, selfComment))) {
-            await check.skipped();
-            console.log(`PR is not published as checkbox is not ticked`);
-            return;
+        else {
+            if (!(await (0, utils_1.isAuthorMaintainer)(octo, pr))) {
+                await check.skipped('Publishing skipped as PR author is not repository collaborator');
+                console.log('Skipping publishing as PR author does not have required permissions');
+                return;
+            }
         }
         // Step 2
         const artifact = await octo.rest.actions
@@ -56737,19 +56747,20 @@ async function runPR(octo, pr, headSha, runId) {
                 comment += await generateMDK(uploader, prNumber, neoArtifact, repoBlock);
             }
         }
-        const oldComment = comment;
+        const contentsComment = comment;
         comment = `
-- [x] ${exports.shouldPublishCheckBox}
-
 Last commit published: [${headSha}](https://github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/commit/${headSha}).
 
 <details>
 
 <summary>PR Publishing</summary>
 
-${oldComment}
+${comment}
 
 </details>`;
+        if (withCheckbox) {
+            comment = `- [x] ${exports.shouldPublishCheckBox}\n\n${comment}`;
+        }
         // Step 5
         if (selfComment) {
             await octo.rest.issues.updateComment({
@@ -56765,7 +56776,7 @@ ${oldComment}
                 body: comment
             });
         }
-        await check.succeed(firstPublishUrl, oldComment, artifacts);
+        await check.succeed(firstPublishUrl, contentsComment, artifacts);
         // Delete the artifact so that we don't try to re-publish in the future
         await octo.rest.actions.deleteArtifact({
             ...github_1.context.repo,
@@ -56946,7 +56957,10 @@ async function runFromTrigger() {
     const octo = (0, utils_1.getOcto)();
     if (github_1.context.eventName == 'pull_request_target' &&
         github_1.context.payload.action == 'opened') {
-        await createInitialComment(octo, github_1.context.payload.pull_request);
+        if ((0, core_1.getBooleanInput)('checkbox')) {
+            // Only create the initial comment when the checkbox is enabled. Otherwise we don't need to create it this early
+            await createInitialComment(octo, github_1.context.payload.pull_request);
+        }
     }
     else if (github_1.context.eventName == 'issue_comment' &&
         github_1.context.payload.action == 'edited') {
