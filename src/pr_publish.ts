@@ -278,11 +278,8 @@ export async function runPR(
       console.log(`\t${art.group}:${art.name}:${art.version}`)
     )
 
-    let { comment, repoBlock, firstPublishUrl } = await generateComment(
-      octo,
-      prNumber,
-      artifacts
-    )
+    let { comment, repoBlock, firstPublishUrl, versions } =
+      await generateComment(octo, prNumber, artifacts)
 
     // Step 4
     if (context.repo.repo.toLowerCase() == 'neoforge') {
@@ -301,7 +298,11 @@ export async function runPR(
 
     const contentsComment = comment
     comment = `
-Last commit published: [${headSha}](https://github.com/${context.repo.owner}/${context.repo.repo}/commit/${headSha}).
+Last commit published: [${headSha}](https://github.com/${context.repo.owner}/${
+      context.repo.repo
+    }/commit/${headSha}) - ${
+      versions.length === 1 ? 'version' : 'versions'
+    }: ${versions.map(v => '`' + v + '`').join(', ')}
 
 <details>
 
@@ -356,10 +357,12 @@ async function generateComment(
   comment: string
   repoBlock: string
   firstPublishUrl?: string
+  versions: string[]
 }> {
   let comment = `### The artifacts published by this PR:  `
 
   let firstPublishUrl: string | undefined = undefined
+  const versions: string[] = []
 
   for (const artifactName of artifacts) {
     const artifact = await (context.payload.repository?.owner?.type == 'User'
@@ -380,6 +383,8 @@ async function generateComment(
     if (!firstPublishUrl) {
       firstPublishUrl = artifact.data.html_url
     }
+
+    versions.push(artifactName.version)
   }
   comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`
   const includeModules = unique(
@@ -405,7 +410,7 @@ ${includeModules}
 \`\`\`gradle
 ${repoBlock}
 \`\`\``
-  return { comment, repoBlock, firstPublishUrl }
+  return { comment, repoBlock, firstPublishUrl, versions: unique(versions) }
 }
 
 // NeoForge repo specific

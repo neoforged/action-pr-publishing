@@ -56739,7 +56739,7 @@ async function runPR(octo, pr, headSha, runId) {
         console.log();
         console.log(`Published artifacts:`);
         artifacts.forEach(art => console.log(`\t${art.group}:${art.name}:${art.version}`));
-        let { comment, repoBlock, firstPublishUrl } = await generateComment(octo, prNumber, artifacts);
+        let { comment, repoBlock, firstPublishUrl, versions } = await generateComment(octo, prNumber, artifacts);
         // Step 4
         if (github_1.context.repo.repo.toLowerCase() == 'neoforge') {
             const neoArtifact = artifacts.find(art => art.group == 'net.neoforged' && art.name == 'neoforge');
@@ -56749,7 +56749,7 @@ async function runPR(octo, pr, headSha, runId) {
         }
         const contentsComment = comment;
         comment = `
-Last commit published: [${headSha}](https://github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/commit/${headSha}).
+Last commit published: [${headSha}](https://github.com/${github_1.context.repo.owner}/${github_1.context.repo.repo}/commit/${headSha}) - ${versions.length === 1 ? 'version' : 'versions'}: ${versions.map(v => '`' + v + '`').join(', ')}
 
 <details>
 
@@ -56797,6 +56797,7 @@ exports.runPR = runPR;
 async function generateComment(octo, prNumber, artifacts) {
     let comment = `### The artifacts published by this PR:  `;
     let firstPublishUrl = undefined;
+    const versions = [];
     for (const artifactName of artifacts) {
         const artifact = await (github_1.context.payload.repository?.owner?.type == 'User'
             ? octo.rest.packages.getPackageForUser({
@@ -56813,6 +56814,7 @@ async function generateComment(octo, prNumber, artifacts) {
         if (!firstPublishUrl) {
             firstPublishUrl = artifact.data.html_url;
         }
+        versions.push(artifactName.version);
     }
     comment += `  \n\n### Repository Declaration\nIn order to use the artifacts published by the PR, add the following repository to your buildscript:`;
     const includeModules = unique(artifacts
@@ -56832,7 +56834,7 @@ ${includeModules}
 \`\`\`gradle
 ${repoBlock}
 \`\`\``;
-    return { comment, repoBlock, firstPublishUrl };
+    return { comment, repoBlock, firstPublishUrl, versions: unique(versions) };
 }
 // NeoForge repo specific
 async function generateMDK(uploader, prNumber, artifact, repoBlock) {
