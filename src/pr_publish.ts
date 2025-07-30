@@ -275,8 +275,10 @@ export async function runPR(
         || pomProject.artifactId !== artifact.name
         || pomProject.version !== artifact.version) {
         console.warn(`Rewriting ${file.name} due to non-lowercase coordinates.`)
-        pomProject.groupId =
-        rewrittenFiles[file.name] = new TextEncoder().encode(new XMLBuilder().build(pomProject))
+        pomProject.groupId = pomProject.groupId.toLowerCase();
+        pomProject.artifactId = pomProject.artifactId.toLowerCase();
+        pomProject.version = pomProject.version.toLowerCase();
+        rewrittenFiles[file.name] = new TextEncoder().encode(new XMLBuilder().build(pom))
       }
 
       artifacts.push(artifact)
