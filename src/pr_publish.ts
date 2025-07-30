@@ -4,8 +4,8 @@ import { GitHub } from '@actions/github/lib/utils'
 import axios, { AxiosRequestConfig } from 'axios'
 import JSZip, { JSZipObject } from 'jszip'
 import * as process from 'process'
-import { getBooleanInput, getInput } from '@actions/core'
-import { XMLParser } from 'fast-xml-parser'
+import { getInput } from '@actions/core'
+import { XMLBuilder, XMLParser } from 'fast-xml-parser'
 import { getOcto, isAuthorMaintainer } from './utils'
 import { PullRequest } from './types'
 import { CheckRun } from './check_runs'
@@ -187,6 +187,16 @@ export async function runPR(
       return !file.dir && filters.some(filter => file.name.startsWith(filter))
     })
 
+    // Lowercase all filenames since GitHub packages does not support uppercase characters
+    let caseManipulated = false;
+    for (const file of toUpload) {
+      if (file.name !== file.name.toLowerCase()) {
+        console.warn(`Making path of file ${file.name} lowercase`);
+        file.name = file.name.toLowerCase();
+        caseManipulated = true;
+      }
+    }
+
     const artifacts: PublishedArtifact[] = []
     const basePath = `https://maven.pkg.github.com/${context.repo.owner}/${context.repo.repo}/pr${prNumber}/`
 
@@ -199,32 +209,76 @@ export async function runPR(
       })
     }
 
+    const rewrittenFiles: {[filename: string]: ArrayBuffer} = {};
     const uploadFile = async (file: JSZipObject) => {
+      let filename = file.name
       try {
-        console.debug(`Uploading ${file.name}`)
-        await uploader(file.name, await file.async('arraybuffer'))
-        console.debug(`Uploaded ${file.name}`)
+        console.debug(`Uploading ${filename}`)
+        const content = rewrittenFiles[filename] ?? await file.async('arraybuffer')
+        await uploader(filename, content)
+        console.debug(`Uploaded ${filename}`)
       } catch (err) {
         if ((err as any).response?.status === 409) {
           // 3 retries, maybe one of them succeeded but didn't reply with 200... just ignore it
           return
         }
 
-        console.error(`Failed to upload file ${file.name}: ${err}`)
+        console.error(`Failed to upload file ${filename}: ${err}`)
         throw err
+      }
+    }
+
+    // If the case of any files has been manipulated, we process all Gradle module metadata
+    // to also lowercase components and files in them
+    if (caseManipulated) {
+      for (const file of toUpload) {
+        if (!file.name.endsWith(".module")) {
+          continue;
+        }
+
+        const module = JSON.parse(await file.async("string"));
+
+        module.component.group = module.component.group?.toLowerCase();
+        module.component.module = module.component.module?.toLowerCase();
+        module.component.version = module.component.version?.toLowerCase();
+
+        for (const variant of module.variants ?? []) {
+          for (const variantFile of variant.files ?? []) {
+            variantFile.name = variantFile.name.toLowerCase();
+            variantFile.url = variantFile.url.toLowerCase();
+          }
+          for (const variantCapability of variant.capabilities ?? []) {
+            variantCapability.group = variantCapability.group?.toLowerCase();
+            variantCapability.name = variantCapability.name?.toLowerCase();
+            variantCapability.version = variantCapability.version?.toLowerCase();
+          }
+        }
+
+        rewrittenFiles[file.name] = new TextEncoder().encode(JSON.stringify(module, null, 2));
       }
     }
 
     // Read pom metadata first and delete versions that are about to be overwritten
     const poms = toUpload.filter(file => file.name.endsWith('.pom'))
     await async.forEachOf(poms, async file => {
-      const pom = new XMLParser().parse(await file.async('string')).project
+      const pom = new XMLParser().parse(await file.async('string'))
+      const pomProject = pom.project;
 
       const artifact: PublishedArtifact = {
-        group: pom.groupId!,
-        name: pom.artifactId!,
-        version: pom.version!
+        group: pomProject.groupId!.toLowerCase(),
+        name: pomProject.artifactId!.toLowerCase(),
+        version: pomProject.version!.toLowerCase()
       }
+
+      // Replace the artifact coordinates in the pom.xml if we just lowercased them
+      if (pomProject.groupId !== artifact.group
+        || pomProject.artifactId !== artifact.name
+        || pomProject.version !== artifact.version) {
+        console.warn(`Rewriting ${file.name} due to non-lowercase coordinates.`)
+        pomProject.groupId =
+        rewrittenFiles[file.name] = new TextEncoder().encode(new XMLBuilder().build(pomProject))
+      }
+
       artifacts.push(artifact)
 
       const packageName = getPackageName(prNumber, artifact)
