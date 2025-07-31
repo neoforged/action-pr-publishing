@@ -56731,7 +56731,9 @@ async function runPR(octo, pr, headSha, runId) {
         // Read pom metadata first and delete versions that are about to be overwritten
         const poms = toUpload.filter(file => file.name.endsWith('.pom'));
         await async.forEachOf(poms, async (file) => {
-            const pom = new fast_xml_parser_1.XMLParser().parse(await file.async('string'));
+            const pom = new fast_xml_parser_1.XMLParser({
+                ignoreAttributes: false
+            }).parse(await file.async('string'));
             const pomProject = pom.project;
             const artifact = {
                 group: pomProject.groupId.toLowerCase(),
@@ -56746,7 +56748,10 @@ async function runPR(octo, pr, headSha, runId) {
                 pomProject.groupId = pomProject.groupId.toLowerCase();
                 pomProject.artifactId = pomProject.artifactId.toLowerCase();
                 pomProject.version = pomProject.version.toLowerCase();
-                rewrittenFiles[file.name] = new TextEncoder().encode(new fast_xml_parser_1.XMLBuilder().build(pom));
+                rewrittenFiles[file.name] = new TextEncoder().encode(new fast_xml_parser_1.XMLBuilder({
+                    ignoreAttributes: false,
+                    format: true
+                }).build(pom));
             }
             artifacts.push(artifact);
             const packageName = getPackageName(prNumber, artifact);

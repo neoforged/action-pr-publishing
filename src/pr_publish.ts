@@ -264,7 +264,9 @@ export async function runPR(
     // Read pom metadata first and delete versions that are about to be overwritten
     const poms = toUpload.filter(file => file.name.endsWith('.pom'))
     await async.forEachOf(poms, async file => {
-      const pom = new XMLParser().parse(await file.async('string'))
+      const pom = new XMLParser({
+        ignoreAttributes: false
+      }).parse(await file.async('string'))
       const pomProject = pom.project
 
       const artifact: PublishedArtifact = {
@@ -284,7 +286,10 @@ export async function runPR(
         pomProject.artifactId = pomProject.artifactId.toLowerCase()
         pomProject.version = pomProject.version.toLowerCase()
         rewrittenFiles[file.name] = new TextEncoder().encode(
-          new XMLBuilder().build(pom)
+          new XMLBuilder({
+            ignoreAttributes: false,
+            format: true
+          }).build(pom)
         )
       }
 
