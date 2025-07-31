@@ -188,12 +188,12 @@ export async function runPR(
     })
 
     // Lowercase all filenames since GitHub packages does not support uppercase characters
-    let caseManipulated = false;
+    let caseManipulated = false
     for (const file of toUpload) {
       if (file.name !== file.name.toLowerCase()) {
-        console.warn(`Making path of file ${file.name} lowercase`);
-        file.name = file.name.toLowerCase();
-        caseManipulated = true;
+        console.warn(`Making path of file ${file.name} lowercase`)
+        file.name = file.name.toLowerCase()
+        caseManipulated = true
       }
     }
 
@@ -209,12 +209,13 @@ export async function runPR(
       })
     }
 
-    const rewrittenFiles: {[filename: string]: ArrayBuffer} = {};
+    const rewrittenFiles: { [filename: string]: ArrayBuffer } = {}
     const uploadFile = async (file: JSZipObject) => {
       let filename = file.name
       try {
         console.debug(`Uploading ${filename}`)
-        const content = rewrittenFiles[filename] ?? await file.async('arraybuffer')
+        const content =
+          rewrittenFiles[filename] ?? (await file.async('arraybuffer'))
         await uploader(filename, content)
         console.debug(`Uploaded ${filename}`)
       } catch (err) {
@@ -232,29 +233,31 @@ export async function runPR(
     // to also lowercase components and files in them
     if (caseManipulated) {
       for (const file of toUpload) {
-        if (!file.name.endsWith(".module")) {
-          continue;
+        if (!file.name.endsWith('.module')) {
+          continue
         }
 
-        const module = JSON.parse(await file.async("string"));
+        const module = JSON.parse(await file.async('string'))
 
-        module.component.group = module.component.group?.toLowerCase();
-        module.component.module = module.component.module?.toLowerCase();
-        module.component.version = module.component.version?.toLowerCase();
+        module.component.group = module.component.group?.toLowerCase()
+        module.component.module = module.component.module?.toLowerCase()
+        module.component.version = module.component.version?.toLowerCase()
 
         for (const variant of module.variants ?? []) {
           for (const variantFile of variant.files ?? []) {
-            variantFile.name = variantFile.name.toLowerCase();
-            variantFile.url = variantFile.url.toLowerCase();
+            variantFile.name = variantFile.name.toLowerCase()
+            variantFile.url = variantFile.url.toLowerCase()
           }
           for (const variantCapability of variant.capabilities ?? []) {
-            variantCapability.group = variantCapability.group?.toLowerCase();
-            variantCapability.name = variantCapability.name?.toLowerCase();
-            variantCapability.version = variantCapability.version?.toLowerCase();
+            variantCapability.group = variantCapability.group?.toLowerCase()
+            variantCapability.name = variantCapability.name?.toLowerCase()
+            variantCapability.version = variantCapability.version?.toLowerCase()
           }
         }
 
-        rewrittenFiles[file.name] = new TextEncoder().encode(JSON.stringify(module, null, 2));
+        rewrittenFiles[file.name] = new TextEncoder().encode(
+          JSON.stringify(module, null, 2)
+        )
       }
     }
 
@@ -262,7 +265,7 @@ export async function runPR(
     const poms = toUpload.filter(file => file.name.endsWith('.pom'))
     await async.forEachOf(poms, async file => {
       const pom = new XMLParser().parse(await file.async('string'))
-      const pomProject = pom.project;
+      const pomProject = pom.project
 
       const artifact: PublishedArtifact = {
         group: pomProject.groupId!.toLowerCase(),
@@ -271,14 +274,18 @@ export async function runPR(
       }
 
       // Replace the artifact coordinates in the pom.xml if we just lowercased them
-      if (pomProject.groupId !== artifact.group
-        || pomProject.artifactId !== artifact.name
-        || pomProject.version !== artifact.version) {
+      if (
+        pomProject.groupId !== artifact.group ||
+        pomProject.artifactId !== artifact.name ||
+        pomProject.version !== artifact.version
+      ) {
         console.warn(`Rewriting ${file.name} due to non-lowercase coordinates.`)
-        pomProject.groupId = pomProject.groupId.toLowerCase();
-        pomProject.artifactId = pomProject.artifactId.toLowerCase();
-        pomProject.version = pomProject.version.toLowerCase();
-        rewrittenFiles[file.name] = new TextEncoder().encode(new XMLBuilder().build(pom))
+        pomProject.groupId = pomProject.groupId.toLowerCase()
+        pomProject.artifactId = pomProject.artifactId.toLowerCase()
+        pomProject.version = pomProject.version.toLowerCase()
+        rewrittenFiles[file.name] = new TextEncoder().encode(
+          new XMLBuilder().build(pom)
+        )
       }
 
       artifacts.push(artifact)
