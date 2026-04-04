@@ -5,6 +5,9 @@ inputs:
   artifacts-base-path:
     required: true
     description: 'Base paths for artifacts'
+  artifacts-size-limit:
+    default: '50'
+    description: 'The limit of the total size of artifacts, in MB. Attempting to PR publish over this limit will cause an error.'
   self-name:
     description: 'The name of the self-user'
     default: 'github-actions[bot]'

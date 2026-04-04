@@ -15,7 +15,7 @@ import * as async from 'async'
 import axiosRetry from 'axios-retry'
 
 // 50mb
-const artifactLimit = 50 * 1000000
+const artifactLimit = parseInt(core.getInput('artifacts-size-limit')) * 1000000
 export const shouldPublishCheckBox = 'Publish PR to GitHub Packages'
 
 export async function runFromWorkflow(): Promise<void> {
